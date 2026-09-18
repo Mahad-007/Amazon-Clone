@@ -1,26 +1,102 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------
+   Amazon design tokens.
+   Values lifted from amazon.com so the clone reads as the real
+   thing at a glance — the header navy, the two distinct CTA
+   yellows, the teal link colour and the dark red price.
+   --------------------------------------------------------------- */
+@theme {
+  --color-ink: #0f1111;          /* body copy */
+  --color-navy: #131921;         /* main header bar */
+  --color-navy-light: #232f3e;   /* sub-nav + footer panel */
+  --color-navy-hover: #485769;
+
+  --color-squid: #37475a;        /* footer "back to top" */
+  --color-canvas: #eaeded;       /* page background */
+  --color-line: #d5d9d9;         /* default border */
+  --color-line-strong: #888c8c;
+
+  --color-link: #007185;
+  --color-link-hover: #c7511f;
+  --color-price: #b12704;
+  --color-success: #007600;
+
+  --color-cta: #ffd814;          /* Add to Cart */
+  --color-cta-hover: #f7ca00;
+  --color-buy: #ffa41c;          /* Buy Now */
+  --color-buy-hover: #fa8900;
+  --color-search: #febd69;       /* search submit */
+  --color-search-hover: #f3a847;
+  --color-star: #ffa41c;
+
+  --font-sans: "Amazon Ember", "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Arial, sans-serif;
+
+  --radius-amz: 8px;             /* Amazon's pill-ish control radius */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Amazon underlines links only on hover, and turns them rust. */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Focus ring matching Amazon's orange-glow treatment. */
+@layer utilities {
+  .amz-focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(228, 121, 17, 0.5);
+    border-color: #e77600;
+  }
+  .link-teal {
+    color: var(--color-link);
+  }
+  .link-teal:hover {
+    color: var(--color-link-hover);
+    text-decoration: underline;
+  }
+  /* Clamp helpers — Amazon truncates titles hard in grids. */
+  .clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+}
+
+/* The header nav links get a 1px box on hover, like the real site. */
+.nav-box {
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+.nav-box:hover {
+  border-color: #fff;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid #e77600;
+  outline-offset: 1px;
+}
+
+/* Hide scrollbars on the horizontal product rails while keeping them scrollable. */
+.rail-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.rail-scroll::-webkit-scrollbar {
+  display: none;
 }
