@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   },
   description:
     "Shop 268 products across 10 departments: electronics, computers, home & kitchen, fashion, books and more. Free delivery on Prime items.",
+  // A clone that reproduces Amazon's branding should not turn up in search
+  // results. Public link, yes; indexed, no. See src/app/robots.ts.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

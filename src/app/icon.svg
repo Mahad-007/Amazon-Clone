@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="12" fill="#131921"/>
+  <!-- lowercase "a", matching the wordmark -->
+  <text x="32" y="40" text-anchor="middle" fill="#ffffff"
+        font-family="Arial, Helvetica, sans-serif" font-size="38" font-weight="700">a</text>
+  <!-- the smile, sweeping under the letter into an arrowhead -->
+  <path d="M13 45c9 6 29 6 38 0" fill="none" stroke="#ff9900"
+        stroke-width="5" stroke-linecap="round"/>
+  <path d="M46 40.5l8 3.5-6.5 5z" fill="#ff9900"/>
+</svg>
