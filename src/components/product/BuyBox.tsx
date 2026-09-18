@@ -81,6 +81,7 @@ export function BuyBox({ product }: { product: Product }) {
       <label className="mb-3 block">
         <span className="sr-only">Quantity</span>
         <select
+          aria-label="Quantity"
           value={qty}
           onChange={(e) => setQty(Number(e.target.value))}
           className="w-full rounded-lg border border-line bg-[#f0f2f2] px-2 py-1.5 text-[13px] shadow-sm"
