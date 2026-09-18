@@ -82,6 +82,8 @@ exactly the failure a green build would otherwise hide.
 | **Orders** | Order history and detail with a delivery progress bar |
 | **Extras** | Deals, wish list, account, 404 |
 
+Every one of those works with JavaScript disabled.
+
 ## Architecture
 
 **Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase**
@@ -98,10 +100,21 @@ security; the policies are in [`supabase/migrations/0001_init.sql`](supabase/mig
 
 A few other choices:
 
+- **The whole shopping flow works without JavaScript.** Search filters are
+  plain links; Add to Cart, Buy Now, quantity, delete and save-for-later are
+  real `<form>`s posting to server actions, with the quantity select
+  auto-submitting on change when scripting is available and falling back to a
+  `<noscript>` Update button when it isn't. Turn JS off entirely and you can
+  still browse, filter, fill a cart and change quantities.
+
+  This started as a bug hunt rather than a principle: the post-deploy smoke
+  test failed against a cold deployment because a click landing between first
+  paint and React hydration was being silently dropped. The fix was to stop
+  depending on hydration at all.
 - **Search state lives entirely in the URL.** Every filter is a plain link, so
-  results are server-rendered, shareable, back-button correct, and work with
-  JavaScript disabled. Facet counts are computed per-dimension, so ticking one
-  brand doesn't collapse the brand list to that brand.
+  results are server-rendered, shareable and back-button correct. Facet counts
+  are computed per-dimension, so ticking one brand doesn't collapse the brand
+  list to that brand.
 - **Carts have two backends behind one interface.** Guests get a cookie;
   signed-in shoppers get Postgres. `mergeGuestCart` folds one into the other
   at sign-in, summing quantities rather than overwriting.

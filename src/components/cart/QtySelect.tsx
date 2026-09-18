@@ -1,44 +1,56 @@
 "use client";
 
-import { useTransition } from "react";
-import { setQty } from "@/app/actions/cart";
+import { useFormStatus } from "react-dom";
+import { setQtyForm } from "@/app/actions/cart";
 
 /**
- * Amazon's cart quantity control. Up to 9 as discrete options, then a "10+"
- * escape hatch — reproduced here because jumping straight to a free-text
- * field for every change is worse for the common case.
+ * Amazon's cart quantity control, as a form.
+ *
+ * With JavaScript the select submits itself on change, which is the
+ * interaction people expect. Without it, the <noscript> button submits the
+ * same form — so the cart stays usable with scripting off, like the rest of
+ * the shopping flow.
  */
-export function QtySelect({
-  asin,
-  value,
-}: {
-  asin: string;
-  value: number;
-}) {
-  const [pending, startTransition] = useTransition();
+export function QtySelect({ asin, value }: { asin: string; value: number }) {
+  return (
+    <form action={setQtyForm} className="flex items-center gap-1.5">
+      <input type="hidden" name="asin" value={asin} />
+      <Select value={value} />
+      <noscript>
+        <button
+          type="submit"
+          className="rounded-lg border border-line bg-[#f0f2f2] px-2 py-1 text-[13px]"
+        >
+          Update
+        </button>
+      </noscript>
+    </form>
+  );
+}
+
+function Select({ value }: { value: number }) {
+  const { pending } = useFormStatus();
+
+  // Amazon lists 1-9 discretely and then an escape hatch; quantities above
+  // nine are rare enough that a prompt beats a permanently wider control.
+  const options = Array.from({ length: 9 }, (_, i) => i + 1);
+  if (value > 9) options.push(value);
 
   return (
     <select
-      value={value > 9 ? "10+" : String(value)}
-      disabled={pending}
+      name="qty"
       aria-label="Quantity"
-      onChange={(e) => {
-        const raw = e.target.value;
-        const next =
-          raw === "10+"
-            ? Number(window.prompt("Enter quantity (1–30)", String(value)))
-            : Number(raw);
-        if (!Number.isFinite(next)) return;
-        startTransition(() => setQty(asin, Math.max(0, Math.min(30, next))));
-      }}
+      defaultValue={value}
+      disabled={pending}
+      onChange={(e) => e.currentTarget.form?.requestSubmit()}
       className="rounded-lg border border-line bg-[#f0f2f2] px-2 py-1 text-[13px] shadow-sm disabled:opacity-60"
     >
-      {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
-        <option key={n} value={String(n)}>
+      {options.map((n) => (
+        <option key={n} value={n}>
           Qty: {n}
         </option>
       ))}
-      <option value="10+">{value > 9 ? `Qty: ${value}` : "10+"}</option>
+      <option value={0}>0 (delete)</option>
     </select>
   );
 }

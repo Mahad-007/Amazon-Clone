@@ -144,3 +144,9 @@ export async function toggleSavedForm(formData: FormData): Promise<void> {
   if (String(formData.get("saved")) === "1") await moveToCart(asin);
   else await saveForLater(asin);
 }
+
+export async function setQtyForm(formData: FormData): Promise<void> {
+  const asin = String(formData.get("asin") ?? "");
+  const qty = Number(formData.get("qty") ?? 1);
+  if (asin && Number.isFinite(qty)) await setQty(asin, Math.trunc(qty));
+}
