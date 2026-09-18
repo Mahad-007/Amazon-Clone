@@ -82,6 +82,26 @@ const TITLE_STOPWORDS = new Set([
   "the", "a", "an", "and", "for", "new", "pack", "set", "premium", "of",
 ]);
 
+/**
+ * Product nouns and adjectives that lead unbranded listings. Without this,
+ * "Headphones Wireless Over Ear..." yields a brand of "Headphones" and the
+ * search page grows a brand facet full of category words.
+ */
+const NOT_A_BRAND = new Set([
+  "headphones", "headphone", "earbuds", "earbud", "wireless", "bluetooth",
+  "hybrid", "bone", "over", "in", "true", "active", "noise", "cancelling",
+  "cordless", "electric", "power", "drill", "laptop", "computer", "tablet",
+  "monitor", "keyboard", "mechanical", "gaming", "portable", "smart", "watch",
+  "smartwatch", "fitness", "yoga", "exercise", "mat", "anti", "slip", "extra",
+  "thick", "high", "density", "all", "purpose", "folding", "dog", "food",
+  "treats", "puppy", "face", "serum", "vitamin", "hyaluronic", "acid",
+  "retinol", "niacinamide", "skin", "skincare", "korean", "building", "brick",
+  "bricks", "block", "blocks", "titanic", "ladder", "wheels", "air", "fryer",
+  "espresso", "coffee", "machine", "running", "shoes", "sneaker", "backpack",
+  "ergonomic", "office", "chair", "classic", "deep", "mini", "large", "small",
+  "compact", "home", "kit", "professional", "digital", "usb", "led", "hd",
+]);
+
 /** Multi-word brands the first-token heuristic would truncate. */
 const KNOWN_BRANDS = [
   "Under Armour", "New Balance", "Amazon Basics", "Blue Buffalo",
@@ -106,15 +126,16 @@ function deriveBrand(title) {
     w === w.toUpperCase() ? w : w[0].toUpperCase() + w.slice(1);
 
   for (const token of tokens) {
-    // Skip articles and anything that is mostly digits ("300Pcs", "18").
-    if (TITLE_STOPWORDS.has(token.toLowerCase())) continue;
+    const lower = token.toLowerCase();
+    // Skip articles, category nouns, and anything starting with a digit.
+    if (TITLE_STOPWORDS.has(lower)) continue;
+    if (NOT_A_BRAND.has(lower)) continue;
     if (/^\d/.test(token)) continue;
     return titleCase(token);
   }
 
-  // Everything was a stopword or a number — use the opening phrase instead.
-  const fallback = tokens.slice(0, 2).map(titleCase).join(" ");
-  return fallback || "Amazon Basics";
+  // The listing leads with no brand at all — Amazon labels these "Generic".
+  return "Generic";
 }
 
 /** A tight title for dense grids and the cart. */
