@@ -1,69 +1,136 @@
-import Image from "next/image";
+import { HeroCarousel } from "@/components/home/HeroCarousel";
+import { Rail } from "@/components/home/Rail";
+import { CategoryCard, FeatureCard } from "@/components/home/CategoryCard";
+import { bestSellers, byCategory, deals, topRated } from "@/lib/catalog";
 
-export default function Home() {
+/**
+ * The catalogue is a static import, so this whole page prerenders at build
+ * time. Nothing here touches the database.
+ */
+export default function HomePage() {
+  const electronics = byCategory("electronics", 8);
+  const computers = byCategory("computers", 8);
+  const kitchen = byCategory("home-kitchen", 8);
+  const fashion = byCategory("fashion", 8);
+  const beauty = byCategory("beauty", 8);
+  const toys = byCategory("toys", 8);
+  const pets = byCategory("pets", 8);
+  const books = byCategory("books", 8);
+  const sports = byCategory("sports", 8);
+  const tools = byCategory("tools", 8);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <>
+      <HeroCarousel />
+
+      {/*
+        Cards ride up over the hero's fade, as on amazon.com. The overlap is
+        smaller on phones so it never covers the hero's call to action.
+      */}
+      <div className="relative z-10 -mt-[56px] px-4 sm:-mt-[80px] md:-mt-[120px] md:px-6">
+        <div className="mx-auto max-w-[1500px]">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <CategoryCard
+              title="Get your tech fix"
+              href="/s?c=electronics"
+              products={electronics}
+              linkLabel="Shop Electronics"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <CategoryCard
+              title="Level up your setup"
+              href="/s?c=computers"
+              products={computers}
+              linkLabel="Shop Computers"
+            />
+            <CategoryCard
+              title="For the kitchen"
+              href="/s?c=home-kitchen"
+              products={kitchen}
+              linkLabel="Shop Home & Kitchen"
+            />
+            <FeatureCard
+              title="Deals you'll actually use"
+              href="/deals"
+              product={deals(1)[0] ?? electronics[0]}
+              linkLabel="See all deals"
+            />
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 md:px-6">
+        <Rail
+          title="Best Sellers"
+          products={bestSellers(18)}
+          href="/s?sort=reviews"
+        />
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <CategoryCard
+            title="Shoes to run in"
+            href="/s?c=fashion"
+            products={fashion}
+            linkLabel="Shop Fashion"
+          />
+          <CategoryCard
+            title="Skincare picks"
+            href="/s?c=beauty"
+            products={beauty}
+            linkLabel="Shop Beauty"
+          />
+          <CategoryCard
+            title="Build something"
+            href="/s?c=toys"
+            products={toys}
+            linkLabel="Shop Toys & Games"
+          />
+          <CategoryCard
+            title="For your dog"
+            href="/s?c=pets"
+            products={pets}
+            linkLabel="Shop Pet Supplies"
+          />
+        </div>
+
+        <Rail
+          title="Today's Deals"
+          products={deals(18)}
+          href="/deals"
+        />
+
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <CategoryCard
+            title="Books worth the weekend"
+            href="/s?c=books"
+            products={books}
+            linkLabel="Shop Books"
+          />
+          <CategoryCard
+            title="Move more"
+            href="/s?c=sports"
+            products={sports}
+            linkLabel="Shop Sports & Outdoors"
+          />
+          <CategoryCard
+            title="Fix it yourself"
+            href="/s?c=tools"
+            products={tools}
+            linkLabel="Shop Tools"
+          />
+          <FeatureCard
+            title="Top rated across the store"
+            href="/s?sort=rating"
+            product={topRated(1)[0] ?? electronics[0]}
+            linkLabel="See top rated"
+          />
+        </div>
+
+        <Rail
+          title="Highly rated"
+          products={topRated(18)}
+          href="/s?sort=rating"
+        />
+      </div>
+    </>
   );
 }

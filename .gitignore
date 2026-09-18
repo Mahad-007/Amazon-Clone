@@ -26,3 +26,6 @@ supabase/.branches/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Local screenshot output from scripts/shot.mjs
+.shots/
