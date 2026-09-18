@@ -23,3 +23,6 @@ supabase/.branches/
 .vercel
 
 # NOTE: .agent-logs/ is deliberately NOT ignored — 8x requires it committed.
+
+# TypeScript incremental build cache
+*.tsbuildinfo
