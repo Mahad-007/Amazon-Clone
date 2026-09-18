@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient, getUser } from "@/lib/supabase/server";
-import { getProducts, bestSellers } from "@/lib/catalog";
+import { getProducts, relatedToAny } from "@/lib/catalog";
 import { ProductCard } from "@/components/product/ProductCard";
 import { Rail } from "@/components/home/Rail";
 
@@ -50,7 +50,10 @@ export default async function WishlistPage() {
       )}
 
       <div className="mt-6">
-        <Rail title="Recommended for you" products={bestSellers(14)} />
+        <Rail
+          title="Related to items on your list"
+          products={relatedToAny(products, 14)}
+        />
       </div>
     </div>
   );

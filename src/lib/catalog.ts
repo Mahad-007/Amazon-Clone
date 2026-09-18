@@ -302,6 +302,50 @@ export function related(product: Product, limit = 12): Product[] {
     .slice(0, limit);
 }
 
+/**
+ * Recommendations for a basket or an order: products from the same
+ * departments as the given items, excluding the items themselves, drawn
+ * round-robin so a two-department cart gets both represented.
+ *
+ * Without this the cart and orders rails showed the global best sellers, so
+ * "Customers who bought items in your cart also bought" sat next to a LEGO
+ * set recommending novels.
+ */
+export function relatedToAny(seeds: Product[], limit = 14): Product[] {
+  if (seeds.length === 0) return bestSellers(limit);
+
+  const exclude = new Set(seeds.map((p) => p.asin));
+  const categories = [...new Set(seeds.map((p) => p.category))];
+
+  const lanes = categories.map((c) =>
+    PRODUCTS.filter((p) => p.category === c && !exclude.has(p.asin)).sort(
+      (a, b) => b.reviewCount - a.reviewCount,
+    ),
+  );
+
+  const out: Product[] = [];
+  for (let round = 0; out.length < limit; round++) {
+    let added = false;
+    for (const lane of lanes) {
+      if (round >= lane.length) continue;
+      out.push(lane[round]);
+      added = true;
+      if (out.length >= limit) break;
+    }
+    if (!added) break;
+  }
+
+  // A single-item cart in a thin department still deserves a full shelf.
+  if (out.length < limit) {
+    for (const p of bestSellers(limit * 2)) {
+      if (out.length >= limit) break;
+      if (!exclude.has(p.asin) && !out.some((x) => x.asin === p.asin)) out.push(p);
+    }
+  }
+
+  return out;
+}
+
 /** Cheaper items in the same department — Amazon's "compare with similar". */
 export function alsoViewed(product: Product, limit = 6): Product[] {
   return PRODUCTS.filter(

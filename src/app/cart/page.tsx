@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { readCart } from "@/lib/cart";
-import { getProduct, bestSellers } from "@/lib/catalog";
+import { getProduct, bestSellers, relatedToAny } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/pricing";
 import { Price } from "@/components/ui/Price";
@@ -197,7 +197,13 @@ export default async function CartPage() {
       </div>
 
       <div className="mt-4">
-        <Rail title="Customers who bought items in your cart also bought" products={bestSellers(14)} />
+        <Rail
+          title="Customers who bought items in your cart also bought"
+          products={relatedToAny(
+            [...active, ...saved].map((x) => x.product!),
+            14,
+          )}
+        />
       </div>
     </div>
   );
