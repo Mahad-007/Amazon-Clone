@@ -21,6 +21,16 @@ export default function HomePage() {
 
   return (
     <>
+      {/*
+        The visible hero headline rotates with the carousel, so it can't be
+        the document's h1. A stable, screen-reader-only heading gives the
+        page exactly one h1 without changing the layout.
+      */}
+      <h1 className="sr-only">
+        Amazon.com: Online Shopping for Electronics, Computers, Home &amp;
+        Kitchen, Fashion, Books and more
+      </h1>
+
       <HeroCarousel />
 
       {/*

@@ -163,6 +163,13 @@ const SECRET_PATTERNS = [
   [/\bAKIA[0-9A-Z]{16}\b/g, "AKIA_REDACTED"],               // AWS access key id
   [/\bsk-[A-Za-z0-9]{20,}/g, "sk_REDACTED"],                 // OpenAI-style keys
   [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, "xox_REDACTED"],      // Slack tokens
+  [/\bvc[a-z]_[A-Za-z0-9]{20,}/g, "vercel_REDACTED"],        // Vercel tokens
+  [/\bnpm_[A-Za-z0-9]{30,}/g, "npm_REDACTED"],               // npm tokens
+  [/\bdop_v1_[a-f0-9]{40,}/g, "dop_REDACTED"],               // DigitalOcean
+  [/\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/g, "SG_REDACTED"], // SendGrid
+  [/\bglpat-[A-Za-z0-9_-]{16,}/g, "glpat_REDACTED"],         // GitLab
+  [/\bAIza[A-Za-z0-9_-]{30,}/g, "AIza_REDACTED"],            // Google API keys
+  [/\bfigd_[A-Za-z0-9_-]{20,}/g, "figd_REDACTED"],           // Figma
   [
     /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
     "PRIVATE_KEY_REDACTED",

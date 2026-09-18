@@ -78,7 +78,7 @@ export default async function SearchPage({
         <div className="min-w-0 flex-1">
           {/* ------------------------------------------- result header */}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-2.5">
-            <p className="text-[14px] text-ink">
+            <h1 className="text-[14px] font-normal text-ink">
               {total === 0 ? (
                 "No results"
               ) : (
@@ -104,7 +104,7 @@ export default async function SearchPage({
                   )}
                 </>
               )}
-            </p>
+            </h1>
 
             <SortLinks raw={raw} current={params.sort ?? "featured"} />
           </div>
