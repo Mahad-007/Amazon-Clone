@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { readCart } from "@/lib/cart";
 import { getProduct, bestSellers } from "@/lib/catalog";
 import { money } from "@/lib/format";
+import { FREE_SHIPPING_THRESHOLD } from "@/lib/pricing";
 import { Price } from "@/components/ui/Price";
 import { QtySelect } from "@/components/cart/QtySelect";
 import { CartLineActions } from "@/components/cart/CartLineActions";
@@ -168,7 +169,7 @@ export default async function CartPage() {
         {active.length > 0 && (
           <aside className="w-full shrink-0 lg:w-[300px]">
             <div className="bg-white px-5 py-4">
-              {subtotal >= 3500 && (
+              {subtotal >= FREE_SHIPPING_THRESHOLD && (
                 <p className="mb-2 flex items-start gap-1.5 text-[13px] text-ink">
                   <span className="mt-0.5 text-success" aria-hidden="true">
                     ✓

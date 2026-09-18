@@ -54,8 +54,9 @@ async function mutate(
     await writeGuestCart(fn(await readGuestCart()));
   }
 
-  revalidatePath("/cart");
-  revalidatePath("/");
+  // The header's cart badge renders in the root layout, so the whole tree
+  // has to be revalidated or the count goes stale on other routes.
+  revalidatePath("/", "layout");
 }
 
 export async function addToCart(asin: string, qty = 1): Promise<void> {
