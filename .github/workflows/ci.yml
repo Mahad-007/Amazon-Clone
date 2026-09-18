@@ -1,0 +1,96 @@
+name: CI
+
+# Gates every PR and every push to main. Deployment itself is Vercel's Git
+# integration; this workflow decides whether the code deserves to get there.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  # A new push supersedes an in-flight run on the same ref.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Node 24 matches local development.
+  NODE_VERSION: "24"
+
+jobs:
+  verify:
+    name: Typecheck, build and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail fast: the cheapest checks run before the build.
+      - name: Catalogue integrity
+        run: node scripts/check-catalog.mjs
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # The catalogue is generated and committed. If regenerating it from the
+      # vendored scrape produces a different file, the two have drifted.
+      - name: Catalogue is reproducible from scripts/raw
+        run: |
+          cp src/data/products.json /tmp/committed.json
+          node scripts/build-catalog.mjs scripts/raw > /dev/null
+          if ! diff -q /tmp/committed.json src/data/products.json; then
+            echo "::error::src/data/products.json differs from a fresh build of scripts/raw"
+            exit 1
+          fi
+          echo "catalogue reproduces exactly"
+
+      - name: Production build
+        # Supabase is deliberately absent here: the app must build and serve
+        # the catalogue without it, and CI is where that stays true.
+        run: npm run build
+
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx --yes playwright@1.63.0 install --with-deps chromium
+
+      - name: Install Chromium system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx --yes playwright@1.63.0 install-deps chromium
+
+      - name: Start the app
+        run: |
+          npx next start --port 3100 &
+          npx wait-on -t 60000 http://localhost:3100
+
+      # Guest-cart flow only: it is cookie-backed, so it needs no database and
+      # writes nothing. The checkout suite hits real Supabase and runs against
+      # production after deploy instead (see smoke.yml).
+      - name: E2E — guest shopping flow
+        run: node scripts/e2e.mjs
+        env:
+          BASE_URL: http://localhost:3100
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-screenshots
+          path: .shots/
+          if-no-files-found: ignore
+          retention-days: 7

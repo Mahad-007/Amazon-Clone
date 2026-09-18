@@ -7,11 +7,15 @@
  * Usage: node scripts/shot.mjs '[{"name":"home","path":"/"}]'
  */
 import { chromium } from "playwright-core";
+
+/**
+ * Resolve Chromium without hardcoding a machine-specific path: honour
+ * CHROME_PATH when set (CI, or a system browser), otherwise use the binary
+ * Playwright downloaded into its own cache.
+ */
+const EXE = process.env.CHROME_PATH || chromium.executablePath();
 import fs from "node:fs";
 
-const EXE =
-  process.env.CHROME_PATH ??
-  "/home/maddy/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
 const OUT = process.env.SHOT_DIR ?? "./.shots";
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 

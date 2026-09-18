@@ -29,3 +29,4 @@ supabase/.branches/
 
 # Local screenshot output from scripts/shot.mjs
 .shots/
+.env*

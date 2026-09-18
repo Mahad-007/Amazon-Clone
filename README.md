@@ -1,8 +1,14 @@
 # Amazon Clone
 
+[![CI](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/ci.yml/badge.svg)](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/ci.yml)
+[![Post-deploy smoke](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/smoke.yml/badge.svg)](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/smoke.yml)
+
 A rebuild of [amazon.com](https://www.amazon.com) — the core shopping flow, built from scratch in 24 hours.
 
-**Live:** _(deploying — link goes here)_
+### → **[shop-amazon-clone.vercel.app](https://shop-amazon-clone.vercel.app)**
+
+Open it signed-out and buy something: search, add to cart, create an account,
+check out, and the order shows up in your history.
 
 ![Home](.github/media/home.png)
 
@@ -32,11 +38,36 @@ pages and a cookie-backed guest cart all work. Only accounts, orders and
 reviews need the database, and their absence degrades rather than crashes.
 
 ```bash
-npm run build        # production build
+npm run build                  # production build
+node scripts/check-catalog.mjs # catalogue integrity
 node scripts/e2e.mjs           # guest cart flow (11 checks)
 node scripts/e2e-checkout.mjs  # register -> checkout -> order (11 checks)
 node scripts/shot.mjs '[{"name":"home","path":"/"}]'   # screenshot routes
 ```
+
+Both e2e suites take a `BASE_URL`, so they run against production too:
+
+```bash
+BASE_URL=https://shop-amazon-clone.vercel.app node scripts/e2e.mjs
+```
+
+## CI/CD
+
+Vercel's Git integration deploys `main` to production and gives every PR a
+preview. GitHub Actions decides whether the code should get there:
+
+- **`ci.yml`** (every PR and push to `main`) — catalogue integrity, typecheck,
+  a check that `products.json` still reproduces exactly from the vendored
+  scrape, a production build **without** Supabase configured (proving the
+  storefront degrades rather than crashes), then the guest shopping flow
+  against the built app. Screenshots upload as artifacts on failure.
+- **`smoke.yml`** (after each successful production deployment) — asserts the
+  site is reachable **anonymously**, checks six key routes, and replays the
+  guest shopping flow against the live URL.
+
+That anonymous check exists because Vercel enables deployment protection on
+new projects by default, which silently 302s every visitor to a login page —
+exactly the failure a green build would otherwise hide.
 
 ## What's built
 

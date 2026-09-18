@@ -1,0 +1,88 @@
+name: Post-deploy smoke
+
+# Runs against the real production URL once Vercel reports a successful
+# deployment, so a green CI that still ships a broken site gets caught.
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: URL to smoke test
+        required: false
+        default: https://shop-amazon-clone.vercel.app
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Smoke test production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # deployment_status fires for every state; only act on a live production one.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment_status.environment == 'Production')
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browser
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx --yes playwright@1.63.0 install --with-deps chromium
+
+      - name: Install Chromium system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx --yes playwright@1.63.0 install-deps chromium
+
+      - name: Resolve target URL
+        id: target
+        run: |
+          URL="${{ github.event.inputs.url || github.event.deployment_status.environment_url }}"
+          URL="${URL:-https://shop-amazon-clone.vercel.app}"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "smoke testing $URL"
+
+      # The site must load for a signed-out visitor — this is the single
+      # requirement most likely to regress silently (Vercel deployment
+      # protection defaults to on for new projects).
+      - name: Public reachability
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.url }}")
+          echo "anonymous GET / -> $CODE"
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Production is not publicly reachable (HTTP $CODE)"
+            exit 1
+          fi
+
+      - name: Key routes respond
+        run: |
+          FAILED=0
+          for path in / /s /deals /cart /signin /product/B0DBF65JYY; do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.url }}$path")
+            printf '%s  %s\n' "$CODE" "$path"
+            [ "$CODE" = "200" ] || FAILED=1
+          done
+          [ "$FAILED" = "0" ] || { echo "::error::A key route did not return 200"; exit 1; }
+
+      - name: E2E — guest shopping flow against production
+        run: node scripts/e2e.mjs
+        env:
+          BASE_URL: ${{ steps.target.outputs.url }}

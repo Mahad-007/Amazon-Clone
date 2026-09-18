@@ -5,9 +5,13 @@
  */
 import { chromium } from "playwright-core";
 
-const EXE =
-  process.env.CHROME_PATH ??
-  "/home/maddy/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+/**
+ * Resolve Chromium without hardcoding a machine-specific path: honour
+ * CHROME_PATH when set (CI, or a system browser), otherwise use the binary
+ * Playwright downloaded into its own cache.
+ */
+const EXE = process.env.CHROME_PATH || chromium.executablePath();
+
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 
 const email = `e2e+${Date.now()}@example.com`;
@@ -30,13 +34,34 @@ function check(name, ok, detail = "") {
   log.push(line);
   if (!ok) failures.push(name);
 }
+
+/**
+ * Wait for the header badge to reach a value rather than sleeping a fixed
+ * amount. A cold serverless function can take a few seconds on the first
+ * interaction, which made fixed waits flaky against production.
+ */
+async function waitForBadge(page, want, timeout = 25000) {
+  try {
+    await page.waitForFunction(
+      (w) =>
+        [...document.querySelectorAll('a[aria-label^="Shopping cart"] span')]
+          .some((s) => s.textContent.trim() === String(w)),
+      want,
+      { timeout },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const badge = async () =>
   Number((await page.locator('a[aria-label^="Shopping cart"] span').first().textContent()) || 0);
 
 // 1. Build a cart as a guest.
 await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "networkidle" });
 await page.click('button:has-text("Add to Cart")');
-await page.waitForTimeout(1000);
+await waitForBadge(page, 1);
 check("guest cart has an item", (await badge()) === 1, `badge=${await badge()}`);
 
 // 2. Checkout should bounce an anonymous visitor to sign-in.
@@ -65,9 +90,9 @@ await page.fill('input[name="postalCode"]', "98109");
 const totalText = (await page.locator("text=Order total").locator("..").textContent()) ?? "";
 await page.click('button:has-text("Place your order")');
 await page.waitForURL(/\/orders\//, { timeout: 25000 });
-// The header re-renders from the revalidated layout; give it a beat before
-// asserting on the badge.
-await page.waitForTimeout(1200);
+// The header re-renders from the revalidated layout; wait for the badge to
+// actually clear rather than guessing how long that takes.
+await waitForBadge(page, 0);
 check("order confirmation shown",
   (await page.getByRole("heading", { name: /Order placed/ }).count()) === 1, page.url());
 check("cart emptied after checkout", (await badge()) === 0, `badge=${await badge()}`);
