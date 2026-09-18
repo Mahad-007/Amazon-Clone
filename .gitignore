@@ -1,0 +1,25 @@
+# Editors
+.idea/
+.vscode/
+.DS_Store
+
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Secrets — never commit
+.env
+.env*.local
+
+# Supabase CLI scratch state
+supabase/.temp/
+supabase/.branches/
+
+# Vercel
+.vercel
+
+# NOTE: .agent-logs/ is deliberately NOT ignored — 8x requires it committed.
