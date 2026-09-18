@@ -141,12 +141,48 @@ function countPrompts(content) {
   return (content.match(/^\[LOG_ENTRY type=PROMPT /gm) || []).length;
 }
 
+/**
+ * Scrub credentials before anything is written to .agent-logs/.
+ *
+ * The logs are committed to a public repository, and a session inevitably
+ * contains tokens pasted by the user or echoed by a command. GitHub's secret
+ * scanning blocks a push that contains one, so this is both a security
+ * control and the thing that keeps the repo pushable.
+ *
+ * Publishable/anon keys are deliberately NOT redacted: they are designed to
+ * be public and ship in the browser bundle anyway.
+ */
+const SECRET_PATTERNS = [
+  [/\bsbp_[A-Za-z0-9]{32,}/g, "sbp_REDACTED"],               // Supabase PAT
+  [/\bsb_secret_[A-Za-z0-9_-]{16,}/g, "sb_secret_REDACTED"], // Supabase secret key
+  [/\bservice_role[^\s"']*\s*[:=]\s*\S+/g, "service_role=REDACTED"],
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "JWT_REDACTED"],
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, "gh_REDACTED"],          // GitHub tokens
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, "github_pat_REDACTED"],
+  [/\bapify_api_[A-Za-z0-9]{20,}/g, "apify_api_REDACTED"],
+  [/\bAKIA[0-9A-Z]{16}\b/g, "AKIA_REDACTED"],               // AWS access key id
+  [/\bsk-[A-Za-z0-9]{20,}/g, "sk_REDACTED"],                 // OpenAI-style keys
+  [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, "xox_REDACTED"],      // Slack tokens
+  [
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    "PRIVATE_KEY_REDACTED",
+  ],
+];
+
+function redact(text) {
+  let out = String(text ?? "");
+  for (const [pattern, replacement] of SECRET_PATTERNS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
 function appendEntry(file, { type, num, sessionId, iso, model, text }) {
   const block =
     `\n[LOG_ENTRY type=${type} num=${num} session=${sessionId.slice(0, 8)}]\n` +
     `timestamp: ${iso}\n` +
     `model: ${model}\n\n` +
-    `${text.trim()}\n\n`;
+    `${redact(text).trim()}\n\n`;
   fs.appendFileSync(file, block);
 }
 
