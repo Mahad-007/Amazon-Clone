@@ -246,16 +246,51 @@ export function topRated(limit = 20): Product[] {
     .slice(0, limit);
 }
 
-/** Anything with a struck-through list price is a "deal". */
+/**
+ * Anything with a struck-through list price is a "deal".
+ *
+ * Sorting purely by discount is the obvious implementation and the wrong
+ * one: a handful of categories carry listings with wildly inflated list
+ * prices, so the whole first screen came back as budget earbuds. Instead we
+ * rank within each department and then round-robin across them, so the grid
+ * opens on the best deal in electronics, then books, then tools, and so on.
+ */
 export function deals(limit = 40): Product[] {
-  return [...PRODUCTS]
-    .filter((p) => p.listPriceCents != null)
-    .sort((a, b) => {
-      const da = 1 - a.priceCents / (a.listPriceCents ?? a.priceCents);
-      const db = 1 - b.priceCents / (b.listPriceCents ?? b.priceCents);
-      return db - da;
-    })
-    .slice(0, limit);
+  const discount = (p: Product) =>
+    1 - p.priceCents / (p.listPriceCents ?? p.priceCents);
+
+  const byCategory = new Map<CategorySlug, Product[]>();
+  for (const p of PRODUCTS) {
+    if (p.listPriceCents == null) continue;
+    const list = byCategory.get(p.category) ?? [];
+    list.push(p);
+    byCategory.set(p.category, list);
+  }
+
+  // Best deal first within each department...
+  for (const list of byCategory.values()) {
+    list.sort((a, b) => discount(b) - discount(a));
+  }
+
+  // ...then departments ordered by how good their best deal is, so the grid
+  // still opens strong rather than alphabetically.
+  const lanes = [...byCategory.values()].sort(
+    (a, b) => discount(b[0]) - discount(a[0]),
+  );
+
+  const out: Product[] = [];
+  for (let round = 0; out.length < limit; round++) {
+    let addedThisRound = false;
+    for (const lane of lanes) {
+      if (round >= lane.length) continue;
+      out.push(lane[round]);
+      addedThisRound = true;
+      if (out.length >= limit) break;
+    }
+    if (!addedThisRound) break; // every lane exhausted
+  }
+
+  return out;
 }
 
 /** Same department, excluding the product itself, most-reviewed first. */
