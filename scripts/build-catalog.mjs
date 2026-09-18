@@ -365,7 +365,12 @@ for (const r of byAsin.values()) {
         ? r.reviews_count_value
         : pick(`${r.asin}rc`, 12, 4200),
     image: imgs.card,
-    images: [imgs.hero, imgs.card, imgs.thumb],
+    // Amazon exposes several photos per listing; a search-results scrape
+    // returns only the primary one. Emitting a single image keeps the
+    // gallery honest -- the alternative was showing one photo three times
+    // at three sizes, which reads as a bug. The PDP hides its thumbnail
+    // column when there is nothing to switch between.
+    images: [imgs.hero],
     category: cat,
     isPrime: Boolean(r.is_prime) || hash(`${r.asin}prime`) % 100 < 72,
     badge: r.badge && r.badge.trim() ? r.badge.trim() : null,
