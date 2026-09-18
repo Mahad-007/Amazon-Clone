@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { addToCart } from "@/app/actions/cart";
+import { useFormStatus } from "react-dom";
+import { addToCartForm } from "@/app/actions/cart";
 
 /**
- * Optimistic-feeling add to cart. The server action revalidates the header
- * count, so the only local state we need is the brief "Added" confirmation.
+ * A real form posting to a server action, so the button works from the moment
+ * the HTML lands — before React hydrates, and with JavaScript off entirely.
+ * useFormStatus supplies the pending state once hydration does happen.
  */
 export function AddToCartButton({
   asin,
@@ -18,27 +19,27 @@ export function AddToCartButton({
   compact?: boolean;
   label?: string;
 }) {
-  const [pending, startTransition] = useTransition();
-  const [added, setAdded] = useState(false);
+  return (
+    <form action={addToCartForm} className="w-full">
+      <input type="hidden" name="asin" value={asin} />
+      <input type="hidden" name="qty" value={qty} />
+      <Submit compact={compact} label={label} />
+    </form>
+  );
+}
 
-  function handleClick() {
-    startTransition(async () => {
-      await addToCart(asin, qty);
-      setAdded(true);
-      setTimeout(() => setAdded(false), 1600);
-    });
-  }
+function Submit({ compact, label }: { compact: boolean; label: string }) {
+  const { pending } = useFormStatus();
 
   return (
     <button
-      type="button"
-      onClick={handleClick}
+      type="submit"
       disabled={pending}
       className={`w-full rounded-full bg-cta text-[13px] text-ink shadow-sm transition-colors hover:bg-cta-hover disabled:opacity-60 ${
         compact ? "py-1.5" : "py-2 text-[14px]"
       }`}
     >
-      {added ? "Added ✓" : pending ? "Adding…" : label}
+      {pending ? "Adding…" : label}
     </button>
   );
 }

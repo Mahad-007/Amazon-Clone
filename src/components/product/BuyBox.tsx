@@ -1,41 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useFormStatus } from "react-dom";
 import type { Product } from "@/lib/types";
 import { Price } from "@/components/ui/Price";
-import { addToCart } from "@/app/actions/cart";
+import { addToCartForm, buyNowForm } from "@/app/actions/cart";
 import { deliveryDate, formatDelivery } from "@/lib/format";
 
 /**
  * The boxed right-hand column: price, delivery promise, stock, quantity and
- * the two CTAs. "Buy now" adds to the cart and jumps straight to checkout,
- * which is the behaviour shoppers expect from the amber button.
+ * the two CTAs.
+ *
+ * It is a real <form> with two submit buttons pointing at different server
+ * actions, so quantity + Add to Cart + Buy Now all work before React hydrates
+ * and with JavaScript disabled. "Buy Now" adds and redirects to checkout,
+ * which is the behaviour the amber button implies.
  */
 export function BuyBox({ product }: { product: Product }) {
-  const router = useRouter();
-  const [qty, setQty] = useState(1);
-  const [pending, startTransition] = useTransition();
-  const [added, setAdded] = useState(false);
-
   const fast = deliveryDate(product.isPrime ? 2 : 5);
   const free = deliveryDate(product.isPrime ? 4 : 8);
   const inStock = product.stock > 0;
 
-  function add(then?: () => void) {
-    startTransition(async () => {
-      await addToCart(product.asin, qty);
-      if (then) then();
-      else {
-        setAdded(true);
-        setTimeout(() => setAdded(false), 1800);
-      }
-    });
-  }
-
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <form action={addToCartForm} className="rounded-lg border border-line bg-white p-4">
+      <input type="hidden" name="asin" value={product.asin} />
       <div className="mb-2">
         <Price cents={product.priceCents} size="lg" />
       </div>
@@ -81,9 +69,9 @@ export function BuyBox({ product }: { product: Product }) {
       <label className="mb-3 block">
         <span className="sr-only">Quantity</span>
         <select
+          name="qty"
           aria-label="Quantity"
-          value={qty}
-          onChange={(e) => setQty(Number(e.target.value))}
+          defaultValue={1}
           className="w-full rounded-lg border border-line bg-[#f0f2f2] px-2 py-1.5 text-[13px] shadow-sm"
         >
           {Array.from({ length: Math.min(10, Math.max(1, product.stock)) }, (_, i) => i + 1).map(
@@ -96,23 +84,7 @@ export function BuyBox({ product }: { product: Product }) {
         </select>
       </label>
 
-      <button
-        type="button"
-        disabled={!inStock || pending}
-        onClick={() => add()}
-        className="mb-2 w-full rounded-full bg-cta py-2 text-[14px] text-ink shadow-sm hover:bg-cta-hover disabled:opacity-60"
-      >
-        {added ? "Added to cart ✓" : pending ? "Adding…" : "Add to Cart"}
-      </button>
-
-      <button
-        type="button"
-        disabled={!inStock || pending}
-        onClick={() => add(() => router.push("/checkout"))}
-        className="mb-3 w-full rounded-full bg-buy py-2 text-[14px] text-ink shadow-sm hover:bg-buy-hover disabled:opacity-60"
-      >
-        Buy Now
-      </button>
+      <Cta inStock={inStock} />
 
       <p className="mb-3 flex items-center gap-1.5 text-[12px] link-teal">
         <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#565959]" aria-hidden="true">
@@ -145,6 +117,35 @@ export function BuyBox({ product }: { product: Product }) {
       >
         Go to Cart
       </Link>
-    </div>
+    </form>
+  );
+}
+
+/**
+ * Both CTAs submit the same form; formAction picks which server action runs.
+ * useFormStatus disables them together while a submit is in flight.
+ */
+function Cta({ inStock }: { inStock: boolean }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <>
+      <button
+        type="submit"
+        disabled={!inStock || pending}
+        className="mb-2 w-full rounded-full bg-cta py-2 text-[14px] text-ink shadow-sm hover:bg-cta-hover disabled:opacity-60"
+      >
+        {pending ? "Adding…" : "Add to Cart"}
+      </button>
+
+      <button
+        type="submit"
+        formAction={buyNowForm}
+        disabled={!inStock || pending}
+        className="mb-3 w-full rounded-full bg-buy py-2 text-[14px] text-ink shadow-sm hover:bg-buy-hover disabled:opacity-60"
+      >
+        Buy Now
+      </button>
+    </>
   );
 }

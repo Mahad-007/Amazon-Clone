@@ -1,9 +1,12 @@
 "use client";
 
-import { useTransition } from "react";
-import { moveToCart, removeFromCart, saveForLater } from "@/app/actions/cart";
+import { useFormStatus } from "react-dom";
+import { removeFromCartForm, toggleSavedForm } from "@/app/actions/cart";
 
-/** "Delete | Save for later" row under each cart line. */
+/**
+ * "Delete | Save for later" under each cart line. Two small forms rather than
+ * click handlers, so they work before hydration and without JavaScript.
+ */
 export function CartLineActions({
   asin,
   saved,
@@ -11,29 +14,34 @@ export function CartLineActions({
   asin: string;
   saved: boolean;
 }) {
-  const [pending, startTransition] = useTransition();
-
   return (
     <span className="flex items-center gap-2 text-[13px]">
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => startTransition(() => removeFromCart(asin))}
-        className="link-teal disabled:opacity-50"
-      >
-        Delete
-      </button>
+      <form action={removeFromCartForm}>
+        <input type="hidden" name="asin" value={asin} />
+        <LinkButton>Delete</LinkButton>
+      </form>
+
       <span className="text-line-strong">|</span>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() =>
-          startTransition(() => (saved ? moveToCart(asin) : saveForLater(asin)))
-        }
-        className="link-teal disabled:opacity-50"
-      >
-        {saved ? "Move to cart" : "Save for later"}
-      </button>
+
+      <form action={toggleSavedForm}>
+        <input type="hidden" name="asin" value={asin} />
+        <input type="hidden" name="saved" value={saved ? "1" : "0"} />
+        <LinkButton>{saved ? "Move to cart" : "Save for later"}</LinkButton>
+      </form>
     </span>
+  );
+}
+
+function LinkButton({ children }: { children: React.ReactNode }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="link-teal disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }

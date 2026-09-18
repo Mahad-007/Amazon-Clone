@@ -12,6 +12,16 @@ import { chromium } from "playwright-core";
  */
 const EXE = process.env.CHROME_PATH || chromium.executablePath();
 
+/*
+ * Navigation waits on "domcontentloaded", not "networkidle".
+ *
+ * These pages pull 30+ product images from Amazon's CDN, so the network
+ * rarely goes idle for the 500ms Playwright wants — against a cold
+ * deployment from a CI runner it simply times out. The markup is
+ * server-rendered and Playwright's click/fill auto-wait for their targets,
+ * so waiting for the document is both sufficient and far more stable.
+ */
+
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 
 const email = `e2e+${Date.now()}@example.com`;
@@ -20,6 +30,8 @@ const password = "hunter2pass";
 const browser = await chromium.launch({ executablePath: EXE });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
 const page = await ctx.newPage();
+page.setDefaultNavigationTimeout(60000);
+page.setDefaultTimeout(30000);
 
 const failures = [];
 const log = [];
@@ -59,17 +71,17 @@ const badge = async () =>
   Number((await page.locator('a[aria-label^="Shopping cart"] span').first().textContent()) || 0);
 
 // 1. Build a cart as a guest.
-await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "domcontentloaded" });
 await page.click('button:has-text("Add to Cart")');
 await waitForBadge(page, 1);
 check("guest cart has an item", (await badge()) === 1, `badge=${await badge()}`);
 
 // 2. Checkout should bounce an anonymous visitor to sign-in.
-await page.goto(`${BASE}/checkout`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/checkout`, { waitUntil: "domcontentloaded" });
 check("checkout redirects anonymous users", new URL(page.url()).pathname === "/signin", page.url());
 
 // 3. Register.
-await page.goto(`${BASE}/register?next=/checkout`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/register?next=/checkout`, { waitUntil: "domcontentloaded" });
 await page.fill('input[name="name"]', "Test Shopper");
 await page.fill('input[name="email"]', email);
 await page.fill('input[name="password"]', password);
@@ -102,25 +114,25 @@ check("order total carried through",
   totalText.trim().slice(0, 40));
 
 // 6. Orders list.
-await page.goto(`${BASE}/orders`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/orders`, { waitUntil: "domcontentloaded" });
 check("order appears in the orders list",
   (await page.locator("text=View order details").count()) >= 1);
 
 // 7. Write a review as the signed-in user.
-await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "domcontentloaded" });
 await page.fill('input[placeholder="Add a headline"]', "Works as described");
 await page.fill('textarea', "Bought this through the demo checkout and it arrived fine.");
 await page.click('button:has-text("Submit review")');
 await page.waitForTimeout(2000);
 check("review submits", (await page.locator("text=your review has been posted").count()) === 1);
-await page.reload({ waitUntil: "networkidle" });
+await page.reload({ waitUntil: "domcontentloaded" });
 check("review persists and is attributed",
   (await page.locator("text=Your review").count()) >= 1);
 
 // 8. Sign out, sign back in, order still there.
-await page.goto(`${BASE}/orders`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/orders`, { waitUntil: "domcontentloaded" });
 await ctx.clearCookies();
-await page.goto(`${BASE}/signin?next=/orders`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/signin?next=/orders`, { waitUntil: "domcontentloaded" });
 await page.fill('input[name="email"]', email);
 await page.fill('input[name="password"]', password);
 await page.click('main button:has-text("Sign in")');

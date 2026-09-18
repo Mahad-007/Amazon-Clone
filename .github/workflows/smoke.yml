@@ -52,23 +52,30 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx --yes playwright@1.63.0 install-deps chromium
 
-      - name: Resolve target URL
+      - name: Resolve target URLs
         id: target
         run: |
-          URL="${{ github.event.inputs.url || github.event.deployment_status.environment_url }}"
-          URL="${URL:-https://shop-amazon-clone.vercel.app}"
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
-          echo "smoke testing $URL"
+          # Two different things are worth checking, and they are not the
+          # same URL. PUBLIC is the stable alias real visitors are given —
+          # that is what must never stop loading. DEPLOY is the immutable
+          # per-deployment URL, which is exactly the build that just shipped.
+          PUBLIC="https://shop-amazon-clone.vercel.app"
+          DEPLOY="${{ github.event.inputs.url || github.event.deployment_status.environment_url }}"
+          DEPLOY="${DEPLOY:-$PUBLIC}"
+          echo "public=$PUBLIC" >> "$GITHUB_OUTPUT"
+          echo "deploy=$DEPLOY" >> "$GITHUB_OUTPUT"
+          echo "public: $PUBLIC"
+          echo "deploy: $DEPLOY"
 
-      # The site must load for a signed-out visitor — this is the single
-      # requirement most likely to regress silently (Vercel deployment
-      # protection defaults to on for new projects).
-      - name: Public reachability
+      # The live link must load for a signed-out visitor. This is the single
+      # requirement most likely to regress silently — Vercel turns deployment
+      # protection on for new projects, which 302s every anonymous visitor.
+      - name: Public URL loads anonymously
         run: |
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.url }}")
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.public }}")
           echo "anonymous GET / -> $CODE"
           if [ "$CODE" != "200" ]; then
-            echo "::error::Production is not publicly reachable (HTTP $CODE)"
+            echo "::error::The public URL is not reachable without signing in (HTTP $CODE)"
             exit 1
           fi
 
@@ -76,13 +83,13 @@ jobs:
         run: |
           FAILED=0
           for path in / /s /deals /cart /signin /product/B0DBF65JYY; do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.url }}$path")
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.deploy }}$path")
             printf '%s  %s\n' "$CODE" "$path"
             [ "$CODE" = "200" ] || FAILED=1
           done
           [ "$FAILED" = "0" ] || { echo "::error::A key route did not return 200"; exit 1; }
 
-      - name: E2E — guest shopping flow against production
+      - name: E2E — guest shopping flow against the new deployment
         run: node scripts/e2e.mjs
         env:
-          BASE_URL: ${{ steps.target.outputs.url }}
+          BASE_URL: ${{ steps.target.outputs.deploy }}

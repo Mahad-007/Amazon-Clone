@@ -12,16 +12,32 @@ import { chromium } from "playwright-core";
  */
 const EXE = process.env.CHROME_PATH || chromium.executablePath();
 
+/*
+ * Navigation waits on "domcontentloaded", not "networkidle".
+ *
+ * These pages pull 30+ product images from Amazon's CDN, so the network
+ * rarely goes idle for the 500ms Playwright wants — against a cold
+ * deployment from a CI runner it simply times out. The markup is
+ * server-rendered and Playwright's click/fill auto-wait for their targets,
+ * so waiting for the document is both sufficient and far more stable.
+ */
+
 const BASE = process.env.BASE_URL ?? "http://localhost:3100";
 
 const browser = await chromium.launch({ executablePath: EXE });
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
+page.setDefaultNavigationTimeout(60000);
+page.setDefaultTimeout(30000);
 
 const failures = [];
 const log = [];
 function check(name, ok, detail = "") {
-  log.push(`${ok ? "  PASS" : "  FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  const line = `${ok ? "  PASS" : "  FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`;
+  // Stream: a later step can throw, and the earlier verdicts are what you
+  // need to diagnose it.
+  console.log(line);
+  log.push(line);
   if (!ok) failures.push(name);
 }
 
@@ -51,7 +67,7 @@ async function cartBadge() {
 }
 
 // ---------------------------------------------------------------- guest cart
-await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/product/B0DBF65JYY`, { waitUntil: "domcontentloaded" });
 check("PDP loads", (await page.locator("h1").first().textContent())?.includes("medicube"));
 check("cart starts empty", (await cartBadge()) === 0, `badge=${await cartBadge()}`);
 
@@ -60,14 +76,14 @@ await waitForBadge(page, 1);
 check("badge increments after add", (await cartBadge()) === 1, `badge=${await cartBadge()}`);
 
 // Add a different product, with quantity 3.
-await page.goto(`${BASE}/product/B00NHQF6MG`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/product/B00NHQF6MG`, { waitUntil: "domcontentloaded" });
 await page.getByLabel("Quantity").selectOption("3");
 await page.click('button:has-text("Add to Cart")');
 await waitForBadge(page, 4);
 check("badge sums quantities", (await cartBadge()) === 4, `badge=${await cartBadge()}`);
 
 // ------------------------------------------------------------------- cart UI
-await page.goto(`${BASE}/cart`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/cart`, { waitUntil: "domcontentloaded" });
 const rows = await page.locator("main ul > li").count();
 check("cart lists both items", rows >= 2, `rows=${rows}`);
 const subtotalText = (await page.locator("text=/Subtotal \\(4 items\\)/").first().textContent()) ?? "";
@@ -90,16 +106,16 @@ const after = await cartBadge();
 check("delete reduces the cart", after < 4, `badge=${after}`);
 
 // ---------------------------------------------------- persistence via cookie
-await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
 check("cart survives navigation", (await cartBadge()) === after, `badge=${await cartBadge()}`);
 
 const fresh = await browser.newContext();
 const freshPage = await fresh.newPage();
-await freshPage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+freshPage.setDefaultNavigationTimeout(60000);
+await freshPage.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
 const freshBadge = Number((await freshPage.locator('a[aria-label^="Shopping cart"] span').first().textContent()) || 0);
 check("a different browser has its own cart", freshBadge === 0, `badge=${freshBadge}`);
 
 await browser.close();
-console.log(log.join("\n"));
 console.log(failures.length ? `\n${failures.length} FAILURE(S): ${failures.join(", ")}` : "\nall checks passed");
 process.exit(failures.length ? 1 : 0);
