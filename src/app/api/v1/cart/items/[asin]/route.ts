@@ -1,11 +1,12 @@
-import { authenticate, fail, mine, notFound, readJson } from "@/lib/api/http";
+import { authenticate, fail, mine, notFound, readJson, handler } from "@/lib/api/http";
 import { cartView } from "@/lib/api/cart-view";
-import { MAX_QTY, mutateDbCart, readDbCart, withQty, withSaved, withoutLine } from "@/lib/cart";
+import { MAX_QTY, clampQty, removeDbLine, updateDbLine } from "@/lib/cart";
+import { getProduct } from "@/lib/catalog";
 
 type Ctx = { params: Promise<{ asin: string }> };
 
 /** Change quantity and/or move between the cart and "saved for later". */
-export async function PATCH(request: Request, { params }: Ctx) {
+async function handlePATCH(request: Request, { params }: Ctx) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
   const { asin } = await params;
@@ -23,23 +24,21 @@ export async function PATCH(request: Request, { params }: Ctx) {
   if (qty === undefined && saved === undefined) {
     return fail(400, "nothing_to_change", "Send qty and/or saved.");
   }
-  if (!(await readDbCart(auth.db)).some((l) => l.asin === asin)) return notFound("Cart line");
-
-  await mutateDbCart(auth.db, auth.user.id, (lines) => {
-    let next = lines;
-    if (qty !== undefined) next = withQty(next, asin, qty as number);
-    if (saved !== undefined) next = withSaved(next, asin, saved);
-    return next;
-  });
+  const patch: { qty?: number; saved?: boolean } = {};
+  if (qty !== undefined) patch.qty = clampQty(qty as number, (await getProduct(asin))?.stock);
+  if (saved !== undefined) patch.saved = saved;
+  if (!(await updateDbLine(auth.db, asin, patch))) return notFound("Cart line");
   return mine(await cartView(auth.db));
 }
 
-export async function DELETE(request: Request, { params }: Ctx) {
+async function handleDELETE(request: Request, { params }: Ctx) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
   const { asin } = await params;
 
-  if (!(await readDbCart(auth.db)).some((l) => l.asin === asin)) return notFound("Cart line");
-  await mutateDbCart(auth.db, auth.user.id, (lines) => withoutLine(lines, asin));
+  if (!(await removeDbLine(auth.db, asin))) return notFound("Cart line");
   return mine(await cartView(auth.db));
 }
+
+export const PATCH = handler(handlePATCH);
+export const DELETE = handler(handleDELETE);

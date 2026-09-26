@@ -1,7 +1,7 @@
-import { authenticate, fail, mine } from "@/lib/api/http";
+import { authenticate, fail, mine, handler } from "@/lib/api/http";
 import { getProducts } from "@/lib/catalog";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
 
@@ -12,3 +12,5 @@ export async function GET(request: Request) {
   if (error) return fail(500, "db_error", error.message);
   return mine({ items: await getProducts((data ?? []).map((r) => r.asin)) });
 }
+
+export const GET = handler(handleGET);

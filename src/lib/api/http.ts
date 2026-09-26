@@ -38,6 +38,21 @@ export function fail(status: number, code: string, message: string): Response {
 
 export const notFound = (what = "Resource") => fail(404, "not_found", `${what} not found.`);
 
+/**
+ * Wraps a route handler so an unexpected throw still answers in the
+ * documented error shape instead of an empty 500.
+ */
+export function handler<A extends unknown[]>(fn: (...args: A) => Promise<Response> | Response) {
+  return async (...args: A): Promise<Response> => {
+    try {
+      return await fn(...args);
+    } catch (error) {
+      console.error("api:", error);
+      return fail(500, "internal_error", "Something went wrong on our side.");
+    }
+  };
+}
+
 /** CORS preflight for the public read endpoints. */
 export function preflight(): Response {
   return new Response(null, {

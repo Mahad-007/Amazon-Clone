@@ -1,8 +1,8 @@
-import { authenticate, fail, mine, readJson } from "@/lib/api/http";
+import { authenticate, fail, mine, readJson, handler } from "@/lib/api/http";
 import { getOrder, listOrders } from "@/lib/orders";
 import { orderErrorMessage, parseShipTo, type ShipTo } from "@/lib/validation";
 
-export async function GET(request: Request) {
+async function handleGET(request: Request) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
   return mine({ items: await listOrders(auth.db) });
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
  * the place_order() SQL function from the products table; the request only
  * says where to ship.
  */
-export async function POST(request: Request) {
+async function handlePOST(request: Request) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
 
@@ -29,8 +29,12 @@ export async function POST(request: Request) {
   });
   if (error || !id) {
     const { code, message } = orderErrorMessage(error?.message);
-    const status = code === "cart_empty" ? 409 : code === "address_incomplete" ? 422 : 500;
+    const status =
+      code === "cart_empty" || code === "out_of_stock" ? 409 : code === "address_incomplete" || code === "order_too_large" ? 422 : 500;
     return fail(status, code, message);
   }
   return mine({ id, order: await getOrder(id, auth.db) }, 201);
 }
+
+export const GET = handler(handleGET);
+export const POST = handler(handlePOST);

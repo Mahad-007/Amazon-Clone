@@ -1,10 +1,10 @@
-import { intParam, notFound, ok, preflight } from "@/lib/api/http";
+import { intParam, notFound, ok, preflight, handler } from "@/lib/api/http";
 import { alsoViewed, getProduct, related } from "@/lib/catalog";
 
 export const OPTIONS = preflight;
 
 /** kind=category (default): same department by popularity; kind=price: nearest price. */
-export async function GET(request: Request, { params }: { params: Promise<{ asin: string }> }) {
+async function handleGET(request: Request, { params }: { params: Promise<{ asin: string }> }) {
   const product = await getProduct((await params).asin);
   if (!product) return notFound("Product");
 
@@ -16,3 +16,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ asin
       : await related(product.asin, product.category, limit);
   return ok({ kind, items });
 }
+
+export const GET = handler(handleGET);

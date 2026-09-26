@@ -29,25 +29,27 @@ export function parseParams(raw: RawParams): SearchParams & { page: number } {
       ? brandRaw.split("|").filter(Boolean)
       : undefined;
 
-  const num = (key: string) => {
+  // URLs are user input: truncate and clamp every number before it reaches
+  // an int parameter in SQL, where 1.5, 1e12 or -1e11 would be a 500.
+  const num = (key: string, min: number, max: number) => {
     const v = Number(one(raw[key]));
-    return Number.isFinite(v) ? v : undefined;
+    return Number.isFinite(v) ? Math.min(max, Math.max(min, Math.trunc(v))) : undefined;
   };
 
   const sort = one(raw.sort) as SortKey | undefined;
 
   return {
-    q: one(raw.q),
+    q: one(raw.q)?.slice(0, 200),
     category: (one(raw.c) as CategorySlug | "all" | undefined) ?? "all",
     brands,
-    minPrice: num("min"),
-    maxPrice: num("max"),
-    minRating: num("rating"),
+    minPrice: num("min", 0, 100_000_000),
+    maxPrice: num("max", 0, 100_000_000),
+    minRating: num("rating", 0, 5),
     // `prime=1` is accepted so links shared before the rename keep working.
     expressOnly: one(raw.express) === "1" || one(raw.prime) === "1",
     dealsOnly: one(raw.deals) === "1",
     sort: sort && SORTS.includes(sort) ? sort : "featured",
-    page: Math.max(1, num("page") ?? 1),
+    page: num("page", 1, 10_000) ?? 1,
   };
 }
 

@@ -1,10 +1,10 @@
-import { authenticate, fail, noContent, notFound } from "@/lib/api/http";
+import { authenticate, fail, noContent, notFound, handler } from "@/lib/api/http";
 import { getProduct } from "@/lib/catalog";
 
 type Ctx = { params: Promise<{ asin: string }> };
 
 /** Idempotent add. */
-export async function PUT(request: Request, { params }: Ctx) {
+async function handlePUT(request: Request, { params }: Ctx) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
 
@@ -19,7 +19,7 @@ export async function PUT(request: Request, { params }: Ctx) {
 }
 
 /** Idempotent remove. */
-export async function DELETE(request: Request, { params }: Ctx) {
+async function handleDELETE(request: Request, { params }: Ctx) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
 
@@ -27,3 +27,6 @@ export async function DELETE(request: Request, { params }: Ctx) {
   if (error) return fail(500, "db_error", error.message);
   return noContent();
 }
+
+export const PUT = handler(handlePUT);
+export const DELETE = handler(handleDELETE);

@@ -1,10 +1,10 @@
-import { authenticate, fail, mine, notFound, readJson } from "@/lib/api/http";
+import { authenticate, fail, mine, notFound, readJson, handler } from "@/lib/api/http";
 import { cartView } from "@/lib/api/cart-view";
-import { MAX_QTY, mutateDbCart, withAdded } from "@/lib/cart";
+import { MAX_QTY, addDbLine } from "@/lib/cart";
 import { getProduct } from "@/lib/catalog";
 
-/** Add to cart. Adding something already there increases its quantity (capped). */
-export async function POST(request: Request) {
+/** Add to cart. Adding something already there increases its quantity (capped at 30 and stock). */
+async function handlePOST(request: Request) {
   const auth = await authenticate(request);
   if ("error" in auth) return auth.error;
 
@@ -18,6 +18,8 @@ export async function POST(request: Request) {
   const product = await getProduct(String(json.body.asin ?? ""));
   if (!product) return notFound("Product");
 
-  await mutateDbCart(auth.db, auth.user.id, (lines) => withAdded(lines, product.asin, qty));
+  await addDbLine(auth.db, product.asin, qty);
   return mine(await cartView(auth.db), 201);
 }
+
+export const POST = handler(handlePOST);

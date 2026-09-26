@@ -6,10 +6,20 @@ import { mergeGuestCart } from "@/lib/cart";
 
 export type AuthState = { error: string | null };
 
-/** Keeps an open redirect from being smuggled in through ?next=. */
+/**
+ * Keeps an open redirect from being smuggled in through ?next=. Browsers
+ * treat "/\evil.com" like "//evil.com", so a prefix check isn't enough:
+ * resolve it and insist it stays on this origin.
+ */
 function safeNext(next: FormDataEntryValue | null): string {
   const value = typeof next === "string" ? next : "/";
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/";
+  if (!value.startsWith("/") || /[\\\u0000-\u001f]/.test(value)) return "/";
+  try {
+    const url = new URL(value, "http://haul.invalid");
+    return url.origin === "http://haul.invalid" ? url.pathname + url.search + url.hash : "/";
+  } catch {
+    return "/";
+  }
 }
 
 function friendly(message: string): string {
@@ -50,7 +60,7 @@ export async function signIn(
   if (error) return { error: friendly(error.message) };
 
   // Fold anything added as a guest into the account's cart.
-  if (data.user) await mergeGuestCart(data.user.id);
+  if (data.user) await mergeGuestCart();
 
   redirect(next);
 }
@@ -82,7 +92,7 @@ export async function register(
 
   if (error) return { error: friendly(error.message) };
 
-  if (data.user) await mergeGuestCart(data.user.id);
+  if (data.user) await mergeGuestCart();
 
   redirect(next);
 }

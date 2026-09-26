@@ -1,9 +1,9 @@
 import { connection } from "next/server";
-import { fail, mine } from "@/lib/api/http";
+import { fail, mine, handler } from "@/lib/api/http";
 import { publicDb } from "@/lib/supabase/public";
 
 /** Liveness plus a real round trip to Postgres; deliberately uncached. */
-export async function GET() {
+async function handleGET() {
   await connection();
   const started = Date.now();
   const { count, error } = await publicDb()
@@ -12,3 +12,5 @@ export async function GET() {
   if (error) return fail(503, "db_unavailable", error.message);
   return mine({ ok: true, products: count, dbLatencyMs: Date.now() - started });
 }
+
+export const GET = handler(handleGET);

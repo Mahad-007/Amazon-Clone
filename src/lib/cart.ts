@@ -20,21 +20,23 @@ export const MAX_QTY = 30;
 
 // ------------------------------------------------------ pure line transforms
 
-const clampQty = (n: number) => Math.max(1, Math.min(MAX_QTY, Math.trunc(n)));
+/** 1..MAX_QTY, and never more than the product has in stock. */
+export const clampQty = (n: number, stock = MAX_QTY) =>
+  Math.max(1, Math.min(MAX_QTY, stock, Math.trunc(n)));
 
-export function withAdded(lines: CartLine[], asin: string, qty: number): CartLine[] {
+export function withAdded(lines: CartLine[], asin: string, qty: number, stock = MAX_QTY): CartLine[] {
   const existing = lines.find((l) => l.asin === asin);
   if (existing) {
     return lines.map((l) =>
-      l.asin === asin ? { ...l, qty: clampQty(l.qty + qty), saved: false } : l,
+      l.asin === asin ? { ...l, qty: clampQty(l.qty + qty, stock), saved: false } : l,
     );
   }
-  return [{ asin, qty: clampQty(qty), saved: false }, ...lines];
+  return [{ asin, qty: clampQty(qty, stock), saved: false }, ...lines];
 }
 
-export function withQty(lines: CartLine[], asin: string, qty: number): CartLine[] {
+export function withQty(lines: CartLine[], asin: string, qty: number, stock = MAX_QTY): CartLine[] {
   if (Math.trunc(qty) <= 0) return withoutLine(lines, asin);
-  return lines.map((l) => (l.asin === asin ? { ...l, qty: clampQty(qty) } : l));
+  return lines.map((l) => (l.asin === asin ? { ...l, qty: clampQty(qty, stock) } : l));
 }
 
 export function withSaved(lines: CartLine[], asin: string, saved: boolean): CartLine[] {
@@ -89,34 +91,34 @@ export async function readDbCart(db: Db): Promise<CartLine[]> {
   return (data ?? []).map((r) => ({ asin: r.asin, qty: r.qty, saved: r.saved }));
 }
 
-/** Applies a transform to the signed-in cart and writes back the difference. */
-export async function mutateDbCart(
+/*
+ * Each write is a single statement on the one line it touches. The old
+ * read-modify-write of the whole cart lost items when two adds raced, and
+ * could resurrect a line that place_order() had just checked out.
+ */
+
+/** Adds (or increments) a line; cart_add() caps it at 30 and at stock. */
+export async function addDbLine(db: Db, asin: string, qty: number): Promise<void> {
+  const { error } = await db.rpc("cart_add", { p_asin: asin, p_qty: qty });
+  if (error) throw new Error(`cart: add failed: ${error.message}`);
+}
+
+/** Returns false when the shopper has no such line. */
+export async function updateDbLine(
   db: Db,
-  userId: string,
-  fn: (lines: CartLine[]) => CartLine[],
-): Promise<CartLine[]> {
-  const before = await readDbCart(db);
-  const after = fn(before);
+  asin: string,
+  patch: { qty?: number; saved?: boolean },
+): Promise<boolean> {
+  const { data, error } = await db.from("cart_items").update(patch).eq("asin", asin).select("asin");
+  if (error) throw new Error(`cart: update failed: ${error.message}`);
+  return (data ?? []).length > 0;
+}
 
-  const keep = new Set(after.map((l) => l.asin));
-  const removed = before.map((l) => l.asin).filter((a) => !keep.has(a));
-  if (removed.length > 0) {
-    const { error } = await db.from("cart_items").delete().in("asin", removed);
-    if (error) throw new Error(`cart: delete failed: ${error.message}`);
-  }
-
-  const changed = after.filter((l) => {
-    const prev = before.find((b) => b.asin === l.asin);
-    return !prev || prev.qty !== l.qty || prev.saved !== l.saved;
-  });
-  if (changed.length > 0) {
-    const { error } = await db.from("cart_items").upsert(
-      changed.map((l) => ({ user_id: userId, asin: l.asin, qty: l.qty, saved: l.saved })),
-      { onConflict: "user_id,asin" },
-    );
-    if (error) throw new Error(`cart: write failed: ${error.message}`);
-  }
-  return after;
+/** Returns false when the shopper has no such line. */
+export async function removeDbLine(db: Db, asin: string): Promise<boolean> {
+  const { data, error } = await db.from("cart_items").delete().eq("asin", asin).select("asin");
+  if (error) throw new Error(`cart: delete failed: ${error.message}`);
+  return (data ?? []).length > 0;
 }
 
 // ---------------------------------------------------------- either backend
@@ -142,17 +144,16 @@ export async function cartCount(): Promise<number> {
  * leaves three in the cart. Lines for products that no longer exist are
  * dropped: the cookie is client-controlled and the table has a foreign key.
  */
-export async function mergeGuestCart(userId: string): Promise<void> {
+export async function mergeGuestCart(): Promise<void> {
   const guest = await readGuestCart();
   if (guest.length === 0) return;
 
   const known = new Set((await getProducts(guest.map((l) => l.asin))).map((p) => p.asin));
   const supabase = await createClient();
-  await mutateDbCart(supabase, userId, (lines) =>
-    guest
-      .filter((g) => known.has(g.asin))
-      .reduce((acc, g) => withSaved(withAdded(acc, g.asin, g.qty), g.asin, g.saved), lines),
-  );
+  for (const line of guest.filter((g) => known.has(g.asin))) {
+    await addDbLine(supabase, line.asin, line.qty);
+    if (line.saved) await updateDbLine(supabase, line.asin, { saved: true });
+  }
 
   const jar = await cookies();
   jar.delete(CART_COOKIE);

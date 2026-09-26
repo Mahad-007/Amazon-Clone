@@ -13,12 +13,13 @@ import type { Histogram, Review } from "./types";
 
 const BUILD = process.env.VERCEL_GIT_COMMIT_SHA ?? "local";
 
-/** A review plus its author id, which only the server uses (to mark "mine"). */
-export type StoredReview = Review & { userId: string };
+// user_id is deliberately absent: clients can't read it (0007), so a
+// reviewer's auth id never leaves the database. my_review_id() answers
+// "which review is mine?" instead.
+const COLUMNS = "id, asin, rating, title, body, author_name, created_at";
 
 type ReviewRow = {
   id: string;
-  user_id: string;
   asin: string;
   rating: number;
   title: string;
@@ -27,10 +28,9 @@ type ReviewRow = {
   created_at: string;
 };
 
-function toReview(r: ReviewRow): StoredReview {
+function toReview(r: ReviewRow): Review {
   return {
     id: r.id,
-    userId: r.user_id,
     asin: r.asin,
     rating: r.rating,
     title: r.title,
@@ -40,16 +40,11 @@ function toReview(r: ReviewRow): StoredReview {
   };
 }
 
-/** Strips the author id before a review leaves the server. */
-export function publicReview({ userId: _userId, ...review }: StoredReview): Review {
-  return review;
-}
-
 export const listReviews = unstable_cache(
-  async (asin: string, limit = 20, offset = 0): Promise<{ items: StoredReview[]; total: number }> => {
+  async (asin: string, limit = 20, offset = 0): Promise<{ items: Review[]; total: number }> => {
     const { data, error, count } = await publicDb()
       .from("reviews")
-      .select("*", { count: "exact" })
+      .select(COLUMNS, { count: "exact" })
       .eq("asin", asin)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -106,37 +101,29 @@ export function cleanReview(input: ReviewInput): { ok: true; value: ReviewInput 
   return { ok: true, value: { rating, title: title || "Review", body } };
 }
 
-/** One review per shopper per product; writing again replaces the old one. */
-export async function upsertReview(
-  db: Db,
-  user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> },
-  asin: string,
-  input: ReviewInput,
-): Promise<StoredReview> {
-  const name =
-    (user.user_metadata?.name as string | undefined)?.trim() ||
-    user.email?.split("@")[0] ||
-    "HAUL Customer";
-
+/**
+ * One review per shopper per product; writing again replaces the old one.
+ * upsert_review() takes the author from auth.uid() and sets the name and
+ * timestamp itself, so none of them can be forged by the caller.
+ */
+export async function upsertReview(db: Db, asin: string, input: ReviewInput): Promise<Review> {
   const { data, error } = await db
-    .from("reviews")
-    .upsert(
-      { user_id: user.id, asin, ...input, author_name: name, created_at: new Date().toISOString() },
-      { onConflict: "user_id,asin" },
-    )
-    .select("*")
+    .rpc("upsert_review", { p_asin: asin, p_rating: input.rating, p_title: input.title, p_body: input.body })
     .single();
   if (error || !data) throw new Error(`reviews: save failed: ${error?.message}`);
   return toReview(data);
 }
 
-export async function deleteReview(db: Db, userId: string, asin: string): Promise<boolean> {
-  const { data, error } = await db
-    .from("reviews")
-    .delete()
-    .eq("user_id", userId)
-    .eq("asin", asin)
-    .select("id");
+/** The signed-in shopper's review of this product, if they wrote one. */
+export async function myReviewId(db: Db, asin: string): Promise<string | null> {
+  const { data, error } = await db.rpc("my_review_id", { p_asin: asin });
+  if (error) throw new Error(`reviews: lookup failed: ${error.message}`);
+  return data ?? null;
+}
+
+/** RLS limits the delete to the caller's own row. */
+export async function deleteReview(db: Db, asin: string): Promise<boolean> {
+  const { data, error } = await db.from("reviews").delete().eq("asin", asin).select("id");
   if (error) throw new Error(`reviews: delete failed: ${error.message}`);
   return (data ?? []).length > 0;
 }

@@ -5,29 +5,36 @@ import { redirect } from "next/navigation";
 import { getProduct } from "@/lib/catalog";
 import {
   MAX_QTY,
-  mutateDbCart,
+  addDbLine,
+  clampQty,
   readGuestCart,
+  removeDbLine,
+  updateDbLine,
   withAdded,
   withQty,
   withSaved,
   withoutLine,
   writeGuestCart,
 } from "@/lib/cart";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, type Db } from "@/lib/supabase/server";
 import type { CartLine } from "@/lib/types";
 
 /**
  * Every mutation routes through here so there is exactly one place that
  * knows whether the shopper is a guest (cookie) or signed in (Postgres).
+ * Signed-in writes are single statements on one line (see lib/cart.ts).
  */
-async function mutate(fn: (lines: CartLine[]) => CartLine[]): Promise<void> {
+async function mutate(
+  db: (db: Db) => Promise<unknown>,
+  guest: (lines: CartLine[]) => CartLine[],
+): Promise<void> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user) await mutateDbCart(supabase, user.id, fn);
-  else await writeGuestCart(fn(await readGuestCart()));
+  if (user) await db(supabase);
+  else await writeGuestCart(guest(await readGuestCart()));
 
   // The header's cart badge renders in the root layout, so the whole tree
   // has to be revalidated or the count goes stale on other routes.
@@ -36,24 +43,41 @@ async function mutate(fn: (lines: CartLine[]) => CartLine[]): Promise<void> {
 
 export async function addToCart(asin: string, qty = 1): Promise<void> {
   // Only real products go in a cart; the form post is client-controlled.
-  if (!(await getProduct(asin))) return;
-  await mutate((lines) => withAdded(lines, asin, qty));
+  const product = await getProduct(asin);
+  if (!product) return;
+  await mutate(
+    (db) => addDbLine(db, asin, qty),
+    (lines) => withAdded(lines, asin, qty, product.stock),
+  );
 }
 
 export async function setQty(asin: string, qty: number): Promise<void> {
-  await mutate((lines) => withQty(lines, asin, qty));
+  const stock = (await getProduct(asin))?.stock ?? MAX_QTY;
+  await mutate(
+    (db) => (qty <= 0 ? removeDbLine(db, asin) : updateDbLine(db, asin, { qty: clampQty(qty, stock) })),
+    (lines) => withQty(lines, asin, qty, stock),
+  );
 }
 
 export async function removeFromCart(asin: string): Promise<void> {
-  await mutate((lines) => withoutLine(lines, asin));
+  await mutate(
+    (db) => removeDbLine(db, asin),
+    (lines) => withoutLine(lines, asin),
+  );
 }
 
 export async function saveForLater(asin: string): Promise<void> {
-  await mutate((lines) => withSaved(lines, asin, true));
+  await mutate(
+    (db) => updateDbLine(db, asin, { saved: true }),
+    (lines) => withSaved(lines, asin, true),
+  );
 }
 
 export async function moveToCart(asin: string): Promise<void> {
-  await mutate((lines) => withSaved(lines, asin, false));
+  await mutate(
+    (db) => updateDbLine(db, asin, { saved: false }),
+    (lines) => withSaved(lines, asin, false),
+  );
 }
 
 /**

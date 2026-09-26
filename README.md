@@ -80,15 +80,26 @@ SQL. Neither has a private shortcut to the data.
   - `0003`: the generated seed.
   - `0004`: foreign keys and the review trigger.
   - `0005`: RLS hardening from `supabase db advisors`.
+  - `0007`: closes the direct-write paths found in review (below).
 - **Row-level security does the authorisation.** API writes run as the calling
   user, whether through a Supabase bearer token or the browser session, so
   Postgres decides what they can touch. Asking for another shopper's order
   returns 404, because RLS makes it indistinguishable from a missing one.
-- **Checkout can't be tampered with.** `place_order()` runs as the caller and:
-  - locks the cart rows, so a double-submit waits and then finds an empty cart;
-  - prices each line from `products`;
-  - writes the order and its line-item snapshots;
-  - clears only the active lines, so saved-for-later items survive.
+- **The database is the security boundary, not the app.** The Supabase anon
+  key ships to every browser, so anything PostgREST allows is public API.
+  Orders and reviews can only be written through their functions; direct
+  inserts are revoked, and reviewers' auth ids can't be read at all. The API
+  e2e suite tries each forgery against the database directly.
+- **Checkout can't be tampered with.** `place_order()` is the only way to
+  create an order. In one transaction it:
+  - takes the active cart lines in a single `delete … returning`, so a
+    double-submit finds an empty cart and a line added mid-checkout is never
+    charged-but-lost;
+  - prices each line from `products` and caps quantities at stock;
+  - writes the order and its line-item snapshots, leaving saved-for-later
+    items alone.
+- **Cart writes are single statements.** Adding is an atomic
+  `insert … on conflict do update`, so six parallel adds make six, not one.
 - **Real reviews move the rating.** `products.rating` is a generated column
   that blends the scraped marketplace rating with HAUL reviews. The trigger
   keeps the totals current, and the histogram is a view over real rows.
@@ -143,7 +154,7 @@ npm run dev
 **Tests.** All three suites run against real Postgres; nothing is mocked:
 
 ```bash
-node scripts/api-e2e.mjs       # 47 REST checks: signs up two shoppers, prices, isolation, trigger
+node scripts/api-e2e.mjs       # 59 REST checks: two shoppers, pricing, isolation, forged writes, races
 node scripts/e2e.mjs           # guest cart in a real browser
 node scripts/e2e-checkout.mjs  # register -> checkout -> order history -> review
 node scripts/layout-check.mjs / /s /cart   # no horizontal overflow at 390px, no broken images
@@ -187,8 +198,8 @@ node scripts/catalog-to-sql.mjs > supabase/migrations/0003_catalog_seed.sql
 
 - **Real payments.** Checkout stores only the card's last four digits.
   Integrating Stripe would demonstrate Stripe, not product judgement.
-- **Stock decrements.** Stock is display-only. CI and e2e runs place real
-  orders and would drain it.
+- **A stock ledger.** Stock caps each order but isn't decremented, so the
+  demo never sells out under reviewers' test orders.
 - **Seller accounts, returns, subscriptions.** Breadth that wouldn't improve
   the core purchase loop.
 - **Dark mode.** The palette is designed around cream paper. A second theme

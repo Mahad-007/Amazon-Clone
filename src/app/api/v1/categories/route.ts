@@ -1,8 +1,10 @@
-import { ok, preflight } from "@/lib/api/http";
+import { ok, preflight, handler } from "@/lib/api/http";
 import { listCategories } from "@/lib/catalog";
 
 export const OPTIONS = preflight;
 
-export async function GET() {
+async function handleGET() {
   return ok({ items: await listCategories() });
 }
+
+export const GET = handler(handleGET);

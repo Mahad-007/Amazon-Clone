@@ -417,6 +417,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      cart_add: { Args: { p_asin: string; p_qty: number }; Returns: number }
       deals: {
         Args: { lim?: number }
         Returns: {
@@ -451,6 +452,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      my_review_id: { Args: { p_asin: string }; Returns: string }
       place_order: {
         Args: { p_payment_last4?: string; p_ship_to: Json }
         Returns: string
@@ -545,6 +547,23 @@ export type Database = {
       search_tokens: { Args: { q: string }; Returns: string[] }
       suggestions: { Args: { lim?: number; q: string }; Returns: string[] }
       sync_review_stats: { Args: { a: string }; Returns: undefined }
+      upsert_review: {
+        Args: {
+          p_asin: string
+          p_body: string
+          p_rating: number
+          p_title: string
+        }
+        Returns: {
+          asin: string
+          author_name: string
+          body: string
+          created_at: string
+          id: string
+          rating: number
+          title: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

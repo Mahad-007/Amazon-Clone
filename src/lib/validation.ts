@@ -45,6 +45,12 @@ export function orderErrorMessage(message: string | undefined): { code: string; 
   if (message?.includes("address_incomplete")) {
     return { code: "address_incomplete", message: "Please complete your shipping address." };
   }
+  if (message?.includes("out_of_stock")) {
+    return { code: "out_of_stock", message: "Some items don't have enough stock left. Lower the quantity and try again." };
+  }
+  if (message?.includes("order_too_large")) {
+    return { code: "order_too_large", message: "That order is too large to place in one go." };
+  }
   if (message?.includes("not_authenticated")) {
     return { code: "unauthenticated", message: "Please sign in to check out." };
   }

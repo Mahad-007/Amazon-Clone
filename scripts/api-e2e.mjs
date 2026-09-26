@@ -7,6 +7,8 @@
  *   BASE_URL=http://localhost:3100 node scripts/api-e2e.mjs
  *   API_E2E_READONLY=1 BASE_URL=https://... node scripts/api-e2e.mjs   # no writes
  *
+ * Writes only go to a local Supabase unless API_E2E_ALLOW_REMOTE=1.
+ *
  * Supabase URL/key come from the environment, falling back to .env.local.
  */
 import fs from "node:fs";
@@ -118,6 +120,11 @@ check("suggest: autocomplete", suggest.json?.suggestions?.length > 0);
 const reviewsRead = await api("GET", "/products/B0DBF65JYY/reviews");
 check("reviews: histogram has five rows", reviewsRead.json?.histogram?.length === 5);
 
+for (const bad of ["page=1.5", "page=1e12", "max=9999999999", "min=-99999999999", "rating=abc"]) {
+  const r = await api("GET", `/products?q=lego&${bad}`);
+  check(`search: hostile param ${bad} is handled`, r.status === 200 && Array.isArray(r.json?.items), `status ${r.status}`);
+}
+
 check("auth: cart requires a token", (await api("GET", "/cart")).status === 401);
 check("auth: bad token rejected", (await api("GET", "/cart", { token: "nope" })).status === 401);
 
@@ -126,6 +133,12 @@ if (!READONLY) {
   const url = env("NEXT_PUBLIC_SUPABASE_URL");
   const key = env("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ?? env("NEXT_PUBLIC_SUPABASE_ANON_KEY");
   if (!url || !key) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
+  // The write checks create shoppers and deliberately attempt forged writes.
+  // .env.local points at production, so a missing env var must not quietly
+  // aim them there: remote databases need an explicit opt-in.
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(url) && process.env.API_E2E_ALLOW_REMOTE !== "1") {
+    throw new Error(`Refusing to write to ${new URL(url).host}. Use a local Supabase, API_E2E_READONLY=1, or API_E2E_ALLOW_REMOTE=1.`);
+  }
 
   async function shopper(tag) {
     const supabase = createClient(url, key, { auth: { persistSession: false } });
@@ -219,6 +232,49 @@ if (!READONLY) {
   check("reviews: delete", (await api("DELETE", `/products/${thin.asin}/reviews/mine`, { token: alice })).status === 204);
   const reverted = (await api("GET", `/products/${thin.asin}`)).json;
   check("reviews: rating reverts after delete", reverted.reviewCount === before.reviewCount && reverted.rating === before.rating);
+
+  // ---- the database itself, not just the API, refuses forged writes
+  // The anon key ships to every browser, so PostgREST is public API too.
+  const as = (token) =>
+    createClient(url, key, {
+      auth: { persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+  const forgedOrder = await as(alice).from("orders").insert({
+    user_id: JSON.parse(Buffer.from(alice.split(".")[1], "base64url")).sub,
+    subtotal_cents: 1, total_cents: 1, status: "delivered", ship_to: {}, arrives_on: "2026-01-01",
+  });
+  check("db: orders can't be inserted directly (only via place_order)", Boolean(forgedOrder.error), forgedOrder.error?.code);
+  const forgedReview = await as(alice).from("reviews").insert({
+    asin: thin.asin, rating: 5, body: "x".repeat(5000), author_name: "HAUL Staff", created_at: "2019-01-01",
+  });
+  check("db: reviews can't be inserted directly", Boolean(forgedReview.error), forgedReview.error?.code);
+  const ids = await createClient(url, key, { auth: { persistSession: false } }).from("reviews").select("user_id").limit(1);
+  check("db: reviewer auth ids aren't readable", Boolean(ids.error), ids.error?.code);
+
+  // ---- cart writes are atomic and capped at stock
+  const [roomy] = (await api("GET", "/products?c=toys&pageSize=48")).json.items.filter((p) => p.stock >= 10);
+  await Promise.all(Array.from({ length: 6 }, () => api("POST", "/cart/items", { token: bob, body: { asin: roomy.asin, qty: 1 } })));
+  const raced = (await api("GET", "/cart", { token: bob })).json?.lines?.find((l) => l.asin === roomy.asin)?.qty;
+  check("cart: six parallel adds all count", raced === 6, `qty ${raced}`);
+  const capped = await api("PATCH", `/cart/items/${roomy.asin}`, { token: bob, body: { qty: 30 } });
+  const cappedQty = capped.json?.lines?.find((l) => l.asin === roomy.asin)?.qty;
+  check("cart: quantity is capped at stock", cappedQty === Math.min(30, roomy.stock), `qty ${cappedQty}, stock ${roomy.stock}`);
+  await api("DELETE", `/cart/items/${roomy.asin}`, { token: bob });
+
+  // ---- a large order: int*int tax maths used to overflow above ~$29,620
+  const priciest = (await api("GET", "/products?sort=price-desc&pageSize=5")).json.items;
+  for (const p of priciest) await api("POST", "/cart/items", { token: bob, body: { asin: p.asin, qty: 30 } });
+  const bigCart = (await api("GET", "/cart", { token: bob })).json;
+  const big = await api("POST", "/orders", {
+    token: bob,
+    body: { shipTo: { fullName: "Bob Big", line1: "1 Large Ln", city: "Austin", state: "TX", postalCode: "78701" } },
+  });
+  check(
+    "orders: large order priced without overflow",
+    big.status === 201 && big.json?.order?.totalCents === quote(bigCart.subtotalCents).total,
+    `status ${big.status}, subtotal $${(bigCart.subtotalCents / 100).toFixed(2)}`,
+  );
 
   // ---- wish list
   check("wishlist: add", (await api("PUT", `/wishlist/${a1.asin}`, { token: bob })).status === 204);

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProduct, related, alsoViewed } from "@/lib/catalog";
-import { listReviews, publicReview, reviewHistogram } from "@/lib/reviews";
+import { listReviews, myReviewId, reviewHistogram } from "@/lib/reviews";
 import { createClient } from "@/lib/supabase/server";
 import { CATEGORIES } from "@/lib/types";
 import { TINT } from "@/lib/tint";
@@ -57,12 +57,20 @@ export default async function ProductPage({ params }: { params: Promise<{ asin: 
   ]);
 
   // RLS scopes list_items to the viewer, so this only ever finds their row.
-  const onList = user
-    ? Boolean((await supabase.from("list_items").select("asin").eq("asin", asin).maybeSingle()).data)
-    : false;
+  const [onList, myId] = user
+    ? await Promise.all([
+        supabase
+          .from("list_items")
+          .select("asin")
+          .eq("asin", asin)
+          .maybeSingle()
+          .then(({ data }) => Boolean(data)),
+        myReviewId(supabase, asin),
+      ])
+    : [false, null];
 
-  const reviews = stored.items.map((r) => ({ ...publicReview(r), mine: user ? r.userId === user.id : false }));
-  const alreadyReviewed = reviews.some((r) => r.mine);
+  const reviews = stored.items.map((r) => ({ ...r, mine: r.id === myId }));
+  const alreadyReviewed = myId !== null;
   const off = product.listPriceCents ? percentOff(product.priceCents, product.listPriceCents) : 0;
 
   const specs: [string, React.ReactNode][] = [

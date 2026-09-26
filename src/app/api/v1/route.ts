@@ -1,7 +1,7 @@
-import { ok } from "@/lib/api/http";
+import { ok, handler } from "@/lib/api/http";
 
 /** Index of the HAUL REST API. Human-readable docs live at /api. */
-export function GET() {
+function handleGET() {
   return ok({
     name: "HAUL API",
     version: "v1",
@@ -33,3 +33,5 @@ export function GET() {
     ],
   });
 }
+
+export const GET = handler(handleGET);
