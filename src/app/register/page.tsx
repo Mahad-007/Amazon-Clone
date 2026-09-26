@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { RegisterForm } from "@/components/auth/RegisterForm";
 
-export const metadata: Metadata = { title: "Create Account" };
+export const metadata: Metadata = { title: "Create account" };
 
 export default async function RegisterPage({
   searchParams,

@@ -1,12 +1,14 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient, getUser } from "@/lib/supabase/server";
 import { getProducts, relatedToAny } from "@/lib/catalog";
+import { Container } from "@/components/layout/Container";
 import { ProductCard } from "@/components/product/ProductCard";
-import { Rail } from "@/components/home/Rail";
+import { Shelf } from "@/components/product/Shelf";
+import { ButtonLink } from "@/components/ui/Button";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 
-export const metadata: Metadata = { title: "Your Wish List" };
+export const metadata: Metadata = { title: "Wish list" };
 export const dynamic = "force-dynamic";
 
 export default async function WishlistPage() {
@@ -14,47 +16,48 @@ export default async function WishlistPage() {
   if (!user) redirect("/signin?next=/wishlist");
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("list_items")
-    .select("asin")
-    .order("added_at", { ascending: false });
+  const { data } = await supabase.from("list_items").select("asin").order("added_at", { ascending: false });
 
   const products = await getProducts((data ?? []).map((r) => r.asin));
+  const recommended = await relatedToAny(
+    products.map((p) => p.asin),
+    14,
+  );
 
   return (
-    <div className="mx-auto max-w-[1500px] px-4 py-5">
-      <h1 className="mb-4 text-[28px] text-ink">Your Wish List</h1>
+    <Container className="py-8 md:py-12">
+      <SectionHeading as="h1" title="Wish list">
+        <span className="font-mono text-[13px] font-bold text-muted">
+          {products.length} saved
+        </span>
+      </SectionHeading>
 
       {products.length === 0 ? (
-        <div className="bg-white px-6 py-10 text-center">
-          <h2 className="mb-2 text-[21px] font-bold text-ink">
-            Your list is empty
-          </h2>
-          <p className="mb-4 text-[14px] text-[#565959]">
-            Use <span className="font-bold">Add to List</span> on any product
-            page to save it for later.
+        <div className="brut bg-pink px-6 py-12 text-center">
+          <p className="font-display text-[32px] font-extrabold leading-tight">Nothing saved yet.</p>
+          <p className="mx-auto mt-2 max-w-sm">
+            Hit <strong>Save to wish list</strong> on any product and it lands here.
           </p>
-          <Link
-            href="/"
-            className="inline-block rounded-full bg-cta px-5 py-1.5 text-[14px] text-ink hover:bg-cta-hover"
-          >
-            Start shopping
-          </Link>
+          <ButtonLink href="/" variant="secondary" className="mt-6">
+            Find something
+          </ButtonLink>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-px bg-line sm:grid-cols-2 lg:grid-cols-4">
+        <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5 lg:grid-cols-4">
           {products.map((p) => (
-            <ProductCard key={p.asin} product={p} showAddToCart />
+            <li key={p.asin}>
+              <ProductCard product={p} showAddToCart />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      <div className="mt-6">
-        <Rail
-          title="Related to items on your list"
-          products={await relatedToAny(products.map((p) => p.asin), 14)}
-        />
-      </div>
-    </div>
+      {recommended.length > 0 && (
+        <section className="mt-14">
+          <SectionHeading title={products.length ? "Goes with your list" : "Popular right now"} />
+          <Shelf products={recommended} label="Recommended products" />
+        </section>
+      )}
+    </Container>
   );
 }

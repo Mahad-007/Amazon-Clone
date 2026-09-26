@@ -4,12 +4,15 @@ import type { Metadata } from "next";
 import { getOrder } from "@/lib/orders";
 import { getUser } from "@/lib/supabase/server";
 import { formatDay, money, orderNumber } from "@/lib/format";
+import { Container } from "@/components/layout/Container";
 import { BuyAgainButton } from "@/components/orders/BuyAgainButton";
+import { STEPS, stepIndex } from "@/components/orders/progress";
+import { ButtonLink } from "@/components/ui/Button";
+import { Panel } from "@/components/ui/Panel";
+import { Sticker } from "@/components/ui/Sticker";
 
-export const metadata: Metadata = { title: "Order Details" };
+export const metadata: Metadata = { title: "Order details" };
 export const dynamic = "force-dynamic";
-
-const STEPS = ["Ordered", "Shipped", "Out for delivery", "Delivered"] as const;
 
 export default async function OrderDetailPage({
   params,
@@ -27,105 +30,133 @@ export default async function OrderDetailPage({
   const order = await getOrder(id);
   if (!order) notFound();
 
-  // A freshly placed order is always at step 1.
-  const stepIndex = order.status === "delivered" ? 3 : 0;
+  const step = stepIndex(order);
+  const itemCount = order.items.reduce((n, i) => n + i.qty, 0);
+  const justPlaced = placed === "1";
 
   return (
-    <div className="mx-auto max-w-[1000px] px-4 py-5">
-      {placed === "1" && (
-        <div className="mb-4 rounded-lg border border-[#067d62] bg-[#f0fbf7] px-5 py-4">
-          <h1 className="mb-1 text-[24px] text-success">
-            Order placed, thank you!
-          </h1>
-          <p className="text-[14px] text-ink">
-            A confirmation would normally be emailed to you. This is a demo
-            store, so no email is sent and no payment was taken.
-          </p>
-        </div>
+    <Container className="py-8 md:py-12">
+      {justPlaced && (
+        <section className="brut relative mb-8 overflow-hidden bg-lime p-6 md:p-10">
+          <div aria-hidden="true" className="dot-grid absolute inset-0 opacity-[0.12]" />
+          <div className="relative flex flex-wrap items-end justify-between gap-6">
+            <div>
+              <Sticker tone="ink" tilt={-3}>
+                #{orderNumber(order.id)}
+              </Sticker>
+              <h1 className="mt-4 font-display text-[44px] font-extrabold leading-[0.92] tracking-[-0.03em] md:text-[72px]">
+                Order placed.
+                <br />
+                Nice haul.
+              </h1>
+              <p className="mt-4 max-w-lg text-[16px]">
+                {itemCount} {itemCount === 1 ? "item is" : "items are"} on the way, arriving{" "}
+                <strong>{formatDay(order.arrivesOn)}</strong>. This is a demo store, so no payment was taken and no email
+                is sent.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <ButtonLink href="/" variant="ink">
+                Keep shopping
+              </ButtonLink>
+              <ButtonLink href="/orders" variant="secondary">
+                All orders
+              </ButtonLink>
+            </div>
+          </div>
+        </section>
       )}
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[21px] text-ink">Order details</h2>
-        <Link href="/orders" className="text-[13px] link-teal">
-          Back to your orders
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          {justPlaced ? (
+            <h2 className="font-display text-[30px] font-extrabold leading-none md:text-[36px]">Order details</h2>
+          ) : (
+            <h1 className="font-display text-[30px] font-extrabold leading-none md:text-[36px]">Order details</h1>
+          )}
+          <p className="mt-2 font-mono text-[13px] text-muted">
+            Placed {formatDay(order.placedAt)} · #{orderNumber(order.id)}
+          </p>
+        </div>
+        <Link href="/orders" className="link font-mono text-[13px] font-bold uppercase">
+          ← Back to orders
         </Link>
       </div>
 
-      <div className="mb-4 rounded-lg border border-line bg-white px-5 py-4">
-        <p className="mb-1 text-[13px] text-[#565959]">
-          Ordered {formatDay(order.placedAt)} · Order #{" "}
-          {orderNumber(order.id)}
+      {/* ------------------------------------------------ delivery track */}
+      <section aria-label="Delivery progress" className="brut mb-8 bg-card p-5 md:p-6">
+        <p className="mb-5 font-display text-[22px] font-bold">
+          {step === 3 ? "Delivered" : "Arriving"} {formatDay(order.arrivesOn)}
         </p>
-        <p className="text-[18px] font-bold text-ink">
-          Arriving {formatDay(order.arrivesOn)}
-        </p>
-
-        {/* ------------------------------------------ delivery progress */}
-        <ol className="mt-4 flex gap-1" aria-label="Delivery progress">
-          {STEPS.map((step, i) => (
-            <li key={step} className="flex-1">
-              <span
-                className={`block h-1.5 rounded-full ${
-                  i <= stepIndex ? "bg-success" : "bg-[#e3e6e6]"
-                }`}
-              />
-              <span
-                className={`mt-1.5 block text-[12px] ${
-                  i <= stepIndex ? "font-bold text-ink" : "text-[#565959]"
-                }`}
-              >
-                {step}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
-        <section className="rounded-lg border border-line bg-white px-5 py-4">
-          <h3 className="mb-3 text-[16px] font-bold text-ink">Items</h3>
-          <ul className="space-y-4">
-            {order.items.map((item) => (
-              <li key={item.asin} className="flex gap-4">
-                <Link
-                  href={`/product/${item.asin}`}
-                  className="flex h-[90px] w-[90px] shrink-0 items-center justify-center"
-                >
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    loading="lazy"
-                    className="max-h-full max-w-full object-contain"
+        <ol className="grid grid-cols-4">
+          {STEPS.map((label, i) => {
+            const done = i <= step;
+            return (
+              <li key={label} className="relative" aria-current={i === step ? "step" : undefined}>
+                {/* The rail: each step draws the segment to its left. */}
+                {i > 0 && (
+                  <span
+                    aria-hidden="true"
+                    className={`absolute right-1/2 top-[14px] h-[6px] w-full border-y-2 border-ink ${done ? "bg-lime" : "bg-paper-deep"}`}
                   />
-                </Link>
-                <div className="min-w-0 flex-1">
-                  <Link href={`/product/${item.asin}`}>
-                    <p className="clamp-2 text-[14px] link-teal">
-                      {item.title}
-                    </p>
-                  </Link>
-                  <p className="mt-0.5 text-[13px] text-[#565959]">
-                    Qty: {item.qty}
-                  </p>
-                  <p className="text-[14px] font-bold text-price">
-                    {money(item.priceCents * item.qty)}
-                  </p>
-                  <div className="mt-2 max-w-[180px]">
-                    <BuyAgainButton asin={item.asin} />
-                  </div>
-                </div>
+                )}
+                <span
+                  aria-hidden="true"
+                  className={`relative z-10 mx-auto grid h-8 w-8 place-items-center rounded-full border-[3px] border-ink font-mono text-[12px] font-bold ${
+                    done ? "bg-lime" : "bg-card"
+                  } ${i === step ? "shadow-brut-sm" : ""}`}
+                >
+                  {done ? "✓" : i + 1}
+                </span>
+                <span
+                  className={`mt-2 block text-center font-mono text-[11px] uppercase tracking-wider md:text-[12px] ${
+                    done ? "font-bold" : "text-muted"
+                  }`}
+                >
+                  {label}
+                  <span className="sr-only">{done ? " (done)" : " (upcoming)"}</span>
+                </span>
               </li>
-            ))}
-          </ul>
-        </section>
+            );
+          })}
+        </ol>
+      </section>
 
-        <aside className="space-y-4">
-          <section className="rounded-lg border border-line bg-white px-5 py-4">
-            <h3 className="mb-2 text-[16px] font-bold text-ink">
-              Shipping address
-            </h3>
-            <address className="text-[14px] not-italic leading-5 text-ink">
-              {order.shipTo.fullName}
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
+        <Panel title={`Items (${itemCount})`} bodyClassName="divide-y-2 divide-ink/15">
+          {order.items.map((item) => (
+            <div key={item.asin} className="flex gap-4 p-4">
+              <Link
+                href={`/product/${item.asin}`}
+                className="grid h-24 w-24 shrink-0 place-items-center border-2 border-ink bg-paper p-2"
+              >
+                <img
+                  src={item.imageUrl}
+                  alt=""
+                  loading="lazy"
+                  className="max-h-full max-w-full object-contain mix-blend-multiply"
+                />
+              </Link>
+              <div className="min-w-0 flex-1">
+                <Link href={`/product/${item.asin}`} className="clamp-2 font-semibold hover:underline">
+                  {item.title}
+                </Link>
+                <p className="mt-1 font-mono text-[12px] text-muted">
+                  Qty {item.qty} · {money(item.priceCents)} each
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <span className="font-display text-[18px] font-extrabold">{money(item.priceCents * item.qty)}</span>
+                  <BuyAgainButton asin={item.asin} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </Panel>
+
+        <aside className="space-y-6">
+          <Panel title="Ship to">
+            <address className="not-italic leading-6">
+              <strong>{order.shipTo.fullName}</strong>
               <br />
               {order.shipTo.line1}
               {order.shipTo.line2 && (
@@ -136,51 +167,40 @@ export default async function OrderDetailPage({
               )}
               <br />
               {order.shipTo.city}
-              {order.shipTo.state ? `, ${order.shipTo.state}` : ""}{" "}
-              {order.shipTo.postalCode}
+              {order.shipTo.state ? `, ${order.shipTo.state}` : ""} {order.shipTo.postalCode}
               <br />
               {order.shipTo.country}
             </address>
-          </section>
+          </Panel>
 
-          <section className="rounded-lg border border-line bg-white px-5 py-4">
-            <h3 className="mb-2 text-[16px] font-bold text-ink">
-              Payment method
-            </h3>
-            <p className="text-[14px] text-ink">
-              Card ending in {order.paymentLast4}
-            </p>
-          </section>
+          <Panel title="Payment">
+            <p className="font-mono text-[14px]">Card ending •••• {order.paymentLast4}</p>
+          </Panel>
 
-          <section className="rounded-lg border border-line bg-white px-5 py-4">
-            <h3 className="mb-2 text-[16px] font-bold text-ink">
-              Order summary
-            </h3>
-            <dl className="space-y-1 text-[14px] text-ink">
-              <Row label="Item(s) subtotal" value={money(order.subtotalCents)} />
-              <Row
-                label="Shipping"
-                value={
-                  order.shippingCents === 0 ? "FREE" : money(order.shippingCents)
-                }
-              />
-              <Row label="Estimated tax" value={money(order.taxCents)} />
+          {/* The receipt: mono type, dashed rules, like the slip in the box. */}
+          <section aria-label="Order summary" className="brut bg-card p-5 font-mono text-[14px]">
+            <p className="text-center text-[12px] font-bold uppercase tracking-[0.2em]">HAUL · Receipt</p>
+            <p className="mt-1 text-center text-[11px] text-muted">#{orderNumber(order.id)}</p>
+            <dl className="mt-4 space-y-1.5 border-t-2 border-dashed border-ink pt-3">
+              <Row label="Items subtotal" value={money(order.subtotalCents)} />
+              <Row label="Shipping" value={order.shippingCents === 0 ? "FREE" : money(order.shippingCents)} />
+              <Row label="Tax (7.25%)" value={money(order.taxCents)} />
             </dl>
-            <p className="mt-2 flex justify-between border-t border-line pt-2 text-[16px] font-bold text-price">
+            <p className="mt-3 flex items-baseline justify-between border-t-2 border-dashed border-ink pt-3 text-[16px] font-bold">
               <span>Grand total</span>
-              <span>{money(order.totalCents)}</span>
+              <span className="font-display text-[26px] font-extrabold">{money(order.totalCents)}</span>
             </p>
           </section>
         </aside>
       </div>
-    </div>
+    </Container>
   );
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
-      <dt>{label}</dt>
+    <div className="flex justify-between gap-4">
+      <dt className="text-muted">{label}</dt>
       <dd>{value}</dd>
     </div>
   );

@@ -3,54 +3,37 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { signIn } from "@/app/actions/auth";
-import { AuthShell, AuthError, Field, SubmitButton } from "./AuthShell";
+import { Field } from "@/components/ui/Field";
+import { buttonStyles } from "@/components/ui/Button";
+import { AuthError, AuthShell, SubmitButton } from "./AuthShell";
 
 export function SignInForm({ next }: { next: string }) {
-  const [state, action, pending] = useActionState(signIn, { error: null });
+  const [state, action] = useActionState(signIn, { error: null });
 
   return (
     <AuthShell
+      kicker="Welcome back"
       title="Sign in"
       footer={
-        <>
-          <div className="relative mb-4">
-            <span className="block border-t border-line" />
-            <span className="absolute left-1/2 top-[-9px] -translate-x-1/2 bg-white px-2 text-[12px] text-[#767676]">
-              New to Amazon?
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-[3px] border-dashed border-ink px-4 py-3">
+          <span className="font-display text-[18px] font-bold">New to HAUL?</span>
           <Link
             href={`/register?next=${encodeURIComponent(next)}`}
-            className="block rounded-[8px] border border-line bg-[#f0f2f2] py-1.5 text-[13px] text-ink hover:bg-[#e3e6e6]"
+            className={buttonStyles({ variant: "secondary", size: "sm" })}
           >
-            Create your Amazon account
+            Create an account
           </Link>
-        </>
+        </div>
       }
     >
-      <form action={action}>
+      <form action={action} className="space-y-4">
         <AuthError message={state.error} />
         <input type="hidden" name="next" value={next} />
-
-        <Field
-          label="Email"
-          name="email"
-          type="email"
-          autoComplete="email"
-        />
-        <Field
-          label="Password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-        />
-
-        <SubmitButton pending={pending}>Sign in</SubmitButton>
-
-        <p className="mt-4 text-[12px] leading-4 text-ink">
-          By continuing, you agree to this demo&apos;s{" "}
-          <span className="link-teal">Conditions of Use</span> and{" "}
-          <span className="link-teal">Privacy Notice</span>.
+        <Field label="Email" name="email" type="email" autoComplete="email" required />
+        <Field label="Password" name="password" type="password" autoComplete="current-password" required />
+        <SubmitButton>Sign in</SubmitButton>
+        <p className="text-[13px] text-muted">
+          Demo store: no real payments are taken and no emails are sent.
         </p>
       </form>
     </AuthShell>

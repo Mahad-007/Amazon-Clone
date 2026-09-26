@@ -86,7 +86,7 @@ await page.fill('input[name="name"]', "Test Shopper");
 await page.fill('input[name="email"]', email);
 await page.fill('input[name="password"]', password);
 await page.fill('input[name="confirm"]', password);
-await page.click('main button:has-text("Create your Amazon account")');
+await page.click('main button:has-text("Create your HAUL account")');
 await page.waitForURL((u) => new URL(u).pathname === "/checkout", { timeout: 25000 });
 check("register lands on checkout", new URL(page.url()).pathname === "/checkout", page.url());
 
