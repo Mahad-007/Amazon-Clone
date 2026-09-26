@@ -4,7 +4,7 @@ import { cartCount } from "@/lib/cart";
 import { getUser } from "@/lib/supabase/server";
 import { CATEGORIES } from "@/lib/types";
 import { AccountMenu } from "./AccountMenu";
-import { SearchBar } from "./SearchBar";
+import { SearchBar, StaticSearchBar } from "./SearchBar";
 import { Wordmark } from "./Wordmark";
 
 /**
@@ -28,7 +28,7 @@ export async function Header() {
         <Wordmark />
 
         <div className="order-last w-full md:order-none md:w-auto md:flex-1">
-          <Suspense fallback={<div className="h-12 w-full rounded-brut border-[3px] border-ink bg-card" />}>
+          <Suspense fallback={<StaticSearchBar />}>
             <SearchBar />
           </Suspense>
         </div>

@@ -5,7 +5,8 @@ import { getProducts, relatedToAny } from "@/lib/catalog";
 import { Container } from "@/components/layout/Container";
 import { ProductCard } from "@/components/product/ProductCard";
 import { Shelf } from "@/components/product/Shelf";
-import { ButtonLink } from "@/components/ui/Button";
+import { ButtonLink, buttonStyles } from "@/components/ui/Button";
+import { setWishlist } from "@/app/actions/wishlist";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 
 export const metadata: Metadata = { title: "Wish list" };
@@ -45,8 +46,16 @@ export default async function WishlistPage() {
       ) : (
         <ul className="grid grid-cols-2 gap-4 md:grid-cols-3 md:gap-5 lg:grid-cols-4">
           {products.map((p) => (
-            <li key={p.asin}>
+            <li key={p.asin} className="flex flex-col gap-2">
               <ProductCard product={p} showAddToCart />
+              {/* A plain form post, so removing works without JavaScript. */}
+              <form action={setWishlist}>
+                <input type="hidden" name="asin" value={p.asin} />
+                <input type="hidden" name="save" value="0" />
+                <button type="submit" className={buttonStyles({ variant: "ghost", size: "sm", block: true })}>
+                  Remove<span className="sr-only"> {p.shortTitle} from your wish list</span>
+                </button>
+              </form>
             </li>
           ))}
         </ul>

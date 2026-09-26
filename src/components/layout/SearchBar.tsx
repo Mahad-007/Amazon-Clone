@@ -4,6 +4,74 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CATEGORIES } from "@/lib/types";
 
+const FORM =
+  "flex h-12 w-full overflow-hidden rounded-brut border-[3px] border-ink bg-card shadow-brut focus-within:shadow-brut-lg";
+const SELECT =
+  "h-full w-[88px] shrink-0 cursor-pointer border-r-[3px] border-ink bg-sun px-2 font-mono text-[12px] font-bold uppercase focus-visible:outline-none sm:w-[130px]";
+const INPUT =
+  "h-full min-w-0 flex-1 bg-transparent px-3 text-[15px] text-ink outline-none placeholder:text-muted/70 [&::-webkit-search-cancel-button]:hidden";
+const PLACEHOLDER = "Search headphones, LEGO, air fryers…";
+
+function ScopeOptions() {
+  return (
+    <>
+      <option value="all">All</option>
+      {CATEGORIES.map((c) => (
+        <option key={c.slug} value={c.slug}>
+          {c.short}
+        </option>
+      ))}
+    </>
+  );
+}
+
+function SubmitButton() {
+  return (
+    <button
+      type="submit"
+      aria-label="Search"
+      className="flex h-full shrink-0 items-center gap-2 border-l-[3px] border-ink bg-ink px-4 font-display text-[15px] font-bold text-lime hover:bg-cobalt hover:text-white"
+    >
+      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="3" />
+        <path d="m15.5 15.5 5 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <span className="hidden lg:inline">Search</span>
+    </button>
+  );
+}
+
+/**
+ * The same form with no hooks: the Suspense fallback for SearchBar. The
+ * interactive bar reads useSearchParams, so it streams in a later chunk that
+ * only a script can reveal. Without this fallback the no-JS page would have
+ * no search box at all.
+ */
+export function StaticSearchBar() {
+  return (
+    <form role="search" action="/s" method="get" className={FORM}>
+      <label className="sr-only" htmlFor="search-scope">
+        Department
+      </label>
+      <select id="search-scope" name="c" defaultValue="all" className={SELECT}>
+        <ScopeOptions />
+      </select>
+      <label className="sr-only" htmlFor="search-input">
+        Search HAUL
+      </label>
+      <input
+        id="search-input"
+        name="q"
+        type="search"
+        placeholder={PLACEHOLDER}
+        autoComplete="off"
+        className={INPUT}
+      />
+      <SubmitButton />
+    </form>
+  );
+}
+
 /**
  * A real GET form to /s, so search works before hydration and with
  * JavaScript off. Once hydrated it navigates client-side and adds
@@ -94,7 +162,7 @@ export function SearchBar() {
           e.preventDefault();
           submit();
         }}
-        className="flex h-12 w-full overflow-hidden rounded-brut border-[3px] border-ink bg-card shadow-brut focus-within:shadow-brut-lg"
+        className={FORM}
       >
         <label className="sr-only" htmlFor="search-scope">
           Department
@@ -104,14 +172,9 @@ export function SearchBar() {
           name="c"
           value={scope}
           onChange={(e) => setScope(e.target.value)}
-          className="h-full w-[88px] shrink-0 cursor-pointer border-r-[3px] border-ink bg-sun px-2 font-mono text-[12px] font-bold uppercase focus-visible:outline-none sm:w-[130px]"
+          className={SELECT}
         >
-          <option value="all">All</option>
-          {CATEGORIES.map((c) => (
-            <option key={c.slug} value={c.slug}>
-              {c.short}
-            </option>
-          ))}
+          <ScopeOptions />
         </select>
 
         <label className="sr-only" htmlFor="search-input">
@@ -129,26 +192,16 @@ export function SearchBar() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search headphones, LEGO, air fryers…"
+          placeholder={PLACEHOLDER}
           autoComplete="off"
           role="combobox"
           aria-expanded={showList}
           aria-controls="search-suggestions"
           aria-activedescendant={active >= 0 ? `suggestion-${active}` : undefined}
-          className="h-full min-w-0 flex-1 bg-transparent px-3 text-[15px] text-ink outline-none placeholder:text-muted/70 [&::-webkit-search-cancel-button]:hidden"
+          className={INPUT}
         />
 
-        <button
-          type="submit"
-          aria-label="Search"
-          className="flex h-full shrink-0 items-center gap-2 border-l-[3px] border-ink bg-ink px-4 font-display text-[15px] font-bold text-lime hover:bg-cobalt hover:text-white"
-        >
-          <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-            <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" strokeWidth="3" />
-            <path d="m15.5 15.5 5 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <span className="hidden lg:inline">Search</span>
-        </button>
+        <SubmitButton />
       </form>
 
       {showList && (

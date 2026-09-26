@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
-import { toggleWishlist } from "@/app/actions/wishlist";
+import { useFormStatus } from "react-dom";
+import { setWishlist } from "@/app/actions/wishlist";
 import { buttonStyles } from "@/components/ui/Button";
 
 const Heart = ({ filled }: { filled: boolean }) => (
@@ -17,6 +17,24 @@ const Heart = ({ filled }: { filled: boolean }) => (
   </svg>
 );
 
+const style = buttonStyles({ variant: "secondary", size: "md", block: true });
+
+/** While the post is in flight, show the state being asked for. */
+function Submit({ saved }: { saved: boolean }) {
+  const { pending, data } = useFormStatus();
+  const shown = pending && data ? data.get("save") === "1" : saved;
+  return (
+    <button type="submit" disabled={pending} aria-pressed={shown} className={style}>
+      <Heart filled={shown} /> {shown ? "Saved to wish list" : "Save to wish list"}
+    </button>
+  );
+}
+
+/**
+ * A real form posting to a server action, so it works without JavaScript.
+ * `initialSaved` comes from the server and is refreshed by the action's
+ * revalidation, so there is no client state to drift out of sync.
+ */
 export function WishlistButton({
   asin,
   signedIn,
@@ -26,10 +44,6 @@ export function WishlistButton({
   signedIn: boolean;
   initialSaved?: boolean;
 }) {
-  const [pending, startTransition] = useTransition();
-  const [saved, setSaved] = useState(initialSaved);
-  const style = buttonStyles({ variant: "secondary", size: "md", block: true });
-
   if (!signedIn) {
     return (
       <Link href={`/signin?next=/product/${asin}`} className={style}>
@@ -39,18 +53,10 @@ export function WishlistButton({
   }
 
   return (
-    <button
-      type="button"
-      disabled={pending}
-      aria-pressed={saved}
-      onClick={() =>
-        startTransition(async () => {
-          setSaved(await toggleWishlist(asin));
-        })
-      }
-      className={style}
-    >
-      <Heart filled={saved} /> {saved ? "Saved to wish list" : "Save to wish list"}
-    </button>
+    <form action={setWishlist}>
+      <input type="hidden" name="asin" value={asin} />
+      <input type="hidden" name="save" value={initialSaved ? "0" : "1"} />
+      <Submit saved={initialSaved} />
+    </form>
   );
 }

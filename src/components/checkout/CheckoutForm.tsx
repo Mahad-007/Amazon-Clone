@@ -30,6 +30,7 @@ export type CheckoutItem = {
  */
 export function CheckoutForm({ items, defaultName }: { items: CheckoutItem[]; defaultName: string }) {
   const [state, action, pending] = useActionState(placeOrder, { error: null });
+  const v = state.values ?? {};
 
   const subtotal = items.reduce((n, i) => n + i.priceCents * i.qty, 0);
   const { shipping, tax, total } = quote(subtotal);
@@ -69,11 +70,19 @@ export function CheckoutForm({ items, defaultName }: { items: CheckoutItem[]; de
           <div className="min-w-0 space-y-6">
             <Step n="01" title="Ship to" tone="bg-sun">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field name="fullName" label="Full name" defaultValue={defaultName} required autoComplete="name" />
-                <Field name="phone" label="Phone" hint="Optional, for delivery updates." type="tel" autoComplete="tel" />
+                <Field name="fullName" label="Full name" defaultValue={v.fullName ?? defaultName} required autoComplete="name" />
+                <Field
+                  name="phone"
+                  label="Phone"
+                  hint="Optional, for delivery updates."
+                  type="tel"
+                  autoComplete="tel"
+                  defaultValue={v.phone}
+                />
                 <Field
                   name="line1"
                   label="Street address"
+                  defaultValue={v.line1}
                   required
                   autoComplete="address-line1"
                   className="sm:col-span-2"
@@ -82,13 +91,21 @@ export function CheckoutForm({ items, defaultName }: { items: CheckoutItem[]; de
                   name="line2"
                   label="Apartment, suite, etc."
                   hint="Optional."
+                  defaultValue={v.line2}
                   autoComplete="address-line2"
                   className="sm:col-span-2"
                 />
-                <Field name="city" label="City" required autoComplete="address-level2" />
+                <Field name="city" label="City" defaultValue={v.city} required autoComplete="address-level2" />
                 <div className="grid grid-cols-2 gap-4">
-                  <Field name="state" label="State" autoComplete="address-level1" />
-                  <Field name="postalCode" label="ZIP code" required autoComplete="postal-code" inputMode="numeric" />
+                  <Field name="state" label="State" defaultValue={v.state} autoComplete="address-level1" />
+                  <Field
+                    name="postalCode"
+                    label="ZIP code"
+                    defaultValue={v.postalCode}
+                    required
+                    autoComplete="postal-code"
+                    inputMode="numeric"
+                  />
                 </div>
               </div>
             </Step>
@@ -106,7 +123,12 @@ export function CheckoutForm({ items, defaultName }: { items: CheckoutItem[]; de
                   autoComplete="off"
                   inputMode="numeric"
                 />
-                <Field name="nameOnCard" label="Name on card" defaultValue={defaultName} autoComplete="cc-name" />
+                <Field
+                  name="nameOnCard"
+                  label="Name on card"
+                  defaultValue={v.nameOnCard ?? defaultName}
+                  autoComplete="cc-name"
+                />
               </div>
             </Step>
 
