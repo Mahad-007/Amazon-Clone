@@ -9,7 +9,7 @@ on:
       url:
         description: URL to smoke test
         required: false
-        default: https://shop-amazon-clone.vercel.app
+        default: https://haul-shop.vercel.app
 
 concurrency:
   group: smoke-${{ github.ref }}
@@ -59,7 +59,7 @@ jobs:
           # same URL. PUBLIC is the stable alias real visitors are given —
           # that is what must never stop loading. DEPLOY is the immutable
           # per-deployment URL, which is exactly the build that just shipped.
-          PUBLIC="https://shop-amazon-clone.vercel.app"
+          PUBLIC="https://haul-shop.vercel.app"
           DEPLOY="${{ github.event.inputs.url || github.event.deployment_status.environment_url }}"
           DEPLOY="${DEPLOY:-$PUBLIC}"
           echo "public=$PUBLIC" >> "$GITHUB_OUTPUT"
