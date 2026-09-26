@@ -82,12 +82,19 @@ jobs:
       - name: Key routes respond
         run: |
           FAILED=0
-          for path in / /s /deals /cart /signin /product/B0DBF65JYY; do
+          for path in / /s /deals /cart /signin /product/B0DBF65JYY /api/v1/health "/api/v1/products?q=sony"; do
             CODE=$(curl -s -o /dev/null -w "%{http_code}" -L "${{ steps.target.outputs.deploy }}$path")
             printf '%s  %s\n' "$CODE" "$path"
             [ "$CODE" = "200" ] || FAILED=1
           done
           [ "$FAILED" = "0" ] || { echo "::error::A key route did not return 200"; exit 1; }
+
+      # Read-only: production is never written to by automation.
+      - name: API e2e (read-only) against the new deployment
+        run: node scripts/api-e2e.mjs
+        env:
+          BASE_URL: ${{ steps.target.outputs.deploy }}
+          API_E2E_READONLY: "1"
 
       - name: E2E — guest shopping flow against the new deployment
         run: node scripts/e2e.mjs

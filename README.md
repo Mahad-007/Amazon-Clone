@@ -33,9 +33,9 @@ cp .env.example .env.local   # add your Supabase URL + publishable key
 npm run dev
 ```
 
-The app runs without Supabase configured — the catalogue, search, product
-pages and a cookie-backed guest cart all work. Only accounts, orders and
-reviews need the database, and their absence degrades rather than crashes.
+Supabase is required: the catalogue, search, carts, orders and reviews all
+live in Postgres. For a local database, `npx supabase start` applies every
+migration (including the catalogue seed) from scratch.
 
 ```bash
 npm run build                  # production build
@@ -88,15 +88,12 @@ Every one of those works with JavaScript disabled.
 
 **Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase**
 
-The one decision worth explaining: **the product catalogue is not in Postgres.**
-It is a static JSON file imported at build time, so search, filtering and
-faceting run in-process with no network hop. 268 products is small enough that
-a linear scan beats any index, and it means the storefront keeps working if
-the database is unreachable.
-
-Postgres owns only what is genuinely per-user and must persist: profiles,
-addresses, carts, wish lists, orders and reviews. Every table has row-level
-security; the policies are in [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql).
+**Postgres is the single source of truth.** The 268-product catalogue lives in
+`public.products`, and search scoring, facet counts, deals, recommendations and
+autocomplete are SQL functions ([`0002_catalog.sql`](supabase/migrations/0002_catalog.sql)).
+Checkout is one transactional `place_order()` call that prices every line from
+the products table. Pages and the public REST API at `/api/v1` run the same
+queries. Every table has row-level security.
 
 A few other choices:
 

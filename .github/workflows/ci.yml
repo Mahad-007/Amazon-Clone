@@ -19,9 +19,9 @@ env:
 
 jobs:
   verify:
-    name: Typecheck, build and smoke test
+    name: Typecheck, migrate, build and e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v5
@@ -41,21 +41,40 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      # The catalogue is generated and committed. If regenerating it from the
-      # vendored scrape produces a different file, the two have drifted.
-      - name: Catalogue is reproducible from scripts/raw
+      # The seed JSON is generated from the vendored scrape, and the seed
+      # migration is generated from the JSON. Both are committed; if either
+      # regenerates differently, they have drifted.
+      - name: Seed data is reproducible
         run: |
-          cp src/data/products.json /tmp/committed.json
           node scripts/build-catalog.mjs scripts/raw > /dev/null
-          if ! diff -q /tmp/committed.json src/data/products.json; then
-            echo "::error::src/data/products.json differs from a fresh build of scripts/raw"
-            exit 1
+          git diff --exit-code supabase/seed/products.json \
+            || { echo "::error::supabase/seed/products.json differs from a fresh build of scripts/raw"; exit 1; }
+          node scripts/catalog-to-sql.mjs | diff -q - supabase/migrations/0003_catalog_seed.sql \
+            || { echo "::error::0003_catalog_seed.sql differs from scripts/catalog-to-sql.mjs output"; exit 1; }
+          echo "seed reproduces exactly"
+
+      # The storefront reads everything from Postgres; nothing may sneak back
+      # in as a bundled fixture.
+      - name: No runtime mock data
+        run: |
+          if grep -rnE "products\.json|generatedReviews" src; then
+            echo "::error::src must not import catalogue fixtures"; exit 1
           fi
-          echo "catalogue reproduces exactly"
+
+      # A throwaway Supabase stack: every migration is applied from scratch,
+      # and the e2e suites write their test users here, never to production.
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase (applies all migrations)
+        run: |
+          supabase start -x studio,logflare,vector,realtime,storage-api,imgproxy,edge-runtime,supavisor,postgres-meta,mailpit
+          supabase status -o env \
+            | sed -n 's/^API_URL=/NEXT_PUBLIC_SUPABASE_URL=/p; s/^PUBLISHABLE_KEY=/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/p' \
+            | tr -d '"' >> "$GITHUB_ENV"
 
       - name: Production build
-        # Supabase is deliberately absent here: the app must build and serve
-        # the catalogue without it, and CI is where that stays true.
         run: npm run build
 
       - name: Cache Playwright browser
@@ -76,13 +95,20 @@ jobs:
       - name: Start the app
         run: |
           npx next start --port 3100 &
-          npx wait-on -t 60000 http://localhost:3100
+          npx wait-on -t 60000 http://localhost:3100/api/v1/health
 
-      # Guest-cart flow only: it is cookie-backed, so it needs no database and
-      # writes nothing. The checkout suite hits real Supabase and runs against
-      # production after deploy instead (see smoke.yml).
+      - name: API e2e — catalogue, cart, checkout, reviews over REST
+        run: node scripts/api-e2e.mjs
+        env:
+          BASE_URL: http://localhost:3100
+
       - name: E2E — guest shopping flow
         run: node scripts/e2e.mjs
+        env:
+          BASE_URL: http://localhost:3100
+
+      - name: E2E — register, checkout, order history, review
+        run: node scripts/e2e-checkout.mjs
         env:
           BASE_URL: http://localhost:3100
 
