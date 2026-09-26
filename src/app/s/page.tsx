@@ -1,11 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { search, CATEGORIES } from "@/lib/catalog";
-import { parseParams, buildUrl, type RawParams } from "@/lib/search-params";
+import { parseParams, buildUrl, toggleBrand, type RawParams } from "@/lib/search-params";
+import { money, reviewCount } from "@/lib/format";
 import { Filters } from "@/components/search/Filters";
-import { FilterPanel } from "@/components/search/FilterPanel";
-import { SearchResultCard } from "@/components/search/SearchResultCard";
-import { reviewCount } from "@/lib/format";
+import { Container } from "@/components/layout/Container";
+import { ProductCard } from "@/components/product/ProductCard";
+import { Chip } from "@/components/ui/Chip";
+import { ButtonLink } from "@/components/ui/Button";
 
 const PAGE_SIZE = 16;
 
@@ -18,247 +20,243 @@ export async function generateMetadata({
   const q = typeof raw.q === "string" ? raw.q : undefined;
   const cat = typeof raw.c === "string" ? raw.c : undefined;
   const catName = CATEGORIES.find((c) => c.slug === cat)?.name;
-
-  return {
-    title: q
-      ? `Amazon.com: ${q}`
-      : catName
-        ? `Amazon.com: ${catName}`
-        : "Amazon.com: All Departments",
-  };
+  return { title: q ? `Search: ${q}` : (catName ?? "Everything") };
 }
 
-export default async function SearchPage({
-  searchParams,
-}: {
-  searchParams: Promise<RawParams>;
-}) {
+export default async function SearchPage({ searchParams }: { searchParams: Promise<RawParams> }) {
   const raw = await searchParams;
   const params = parseParams(raw);
-  const {
-    items: pageItems,
-    facets,
-    total,
-    page,
-    pageCount,
-  } = await search({ ...params, pageSize: PAGE_SIZE });
+  const { items, facets, total, page, pageCount } = await search({ ...params, pageSize: PAGE_SIZE });
   const start = (page - 1) * PAGE_SIZE;
 
-  // Drives the count badge on the mobile "Filters" toggle.
-  const activeFilterCount =
-    (params.category && params.category !== "all" ? 1 : 0) +
-    (params.brands?.length ?? 0) +
-    (params.minPrice != null || params.maxPrice != null ? 1 : 0) +
-    (params.minRating != null ? 1 : 0) +
-    (params.expressOnly ? 1 : 0) +
-    (params.dealsOnly ? 1 : 0);
+  const category = params.category && params.category !== "all" ? CATEGORIES.find((c) => c.slug === params.category) : undefined;
+  const chips = activeChips(raw, params, facets.priceBuckets);
+  const sort = params.sort ?? "featured";
 
-  const categoryName =
-    params.category && params.category !== "all"
-      ? CATEGORIES.find((c) => c.slug === params.category)?.name
-      : undefined;
+  const filters = (
+    <Filters
+      raw={raw}
+      facets={facets}
+      active={{
+        category: String(params.category ?? "all"),
+        brands: params.brands ?? [],
+        minPrice: params.minPrice,
+        maxPrice: params.maxPrice,
+        minRating: params.minRating,
+        expressOnly: params.expressOnly,
+        dealsOnly: params.dealsOnly,
+      }}
+    />
+  );
 
   return (
-    <div className="mx-auto max-w-[1500px] px-3 py-3">
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <FilterPanel activeCount={activeFilterCount}>
-          <Filters
-            raw={raw}
-            facets={facets}
-            active={{
-              category: String(params.category ?? "all"),
-              brands: params.brands ?? [],
-              minPrice: params.minPrice,
-              maxPrice: params.maxPrice,
-              minRating: params.minRating,
-              primeOnly: params.expressOnly,
-              dealsOnly: params.dealsOnly,
-            }}
-          />
-        </FilterPanel>
+    <Container className="pt-8">
+      {/* --------------------------------------------------------- title */}
+      <header className="mb-6">
+        <p className="font-mono text-[12px] font-bold uppercase tracking-[0.16em] text-muted">
+          {params.q ? "Search results" : "Browse"}
+        </p>
+        <h1 className="mt-1 break-words font-display text-[40px] font-extrabold leading-[0.95] tracking-tight md:text-[56px]">
+          {params.q ? (
+            <>
+              “<span className="bg-lime px-1">{params.q}</span>”
+            </>
+          ) : (
+            (category?.name ?? "Everything")
+          )}
+        </h1>
+      </header>
 
-        <div className="min-w-0 flex-1">
-          {/* ------------------------------------------- result header */}
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-2.5">
-            <h1 className="text-[14px] font-normal text-ink">
-              {total === 0 ? (
-                "No results"
-              ) : (
-                <>
-                  <span className="font-bold">
-                    {start + 1}-{Math.min(start + PAGE_SIZE, total)}
-                  </span>{" "}
-                  of {reviewCount(total)} results
-                  {params.q && (
-                    <>
-                      {" "}
-                      for{" "}
-                      <span className="font-bold text-price">
-                        &quot;{params.q}&quot;
-                      </span>
-                    </>
-                  )}
-                  {categoryName && !params.q && (
-                    <>
-                      {" "}
-                      in <span className="font-bold">{categoryName}</span>
-                    </>
-                  )}
-                </>
+      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+        {/* ---------------------------------------------------- filters */}
+        {/* Phones: a native <details> drawer, which needs no JavaScript. */}
+        <details className="group lg:hidden">
+          <summary className="flex h-12 cursor-pointer list-none items-center justify-between rounded-brut border-[3px] border-ink bg-card px-4 font-display text-[16px] font-bold shadow-brut [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2">
+              Filters
+              {chips.length > 0 && (
+                <span className="grid h-6 min-w-6 place-items-center rounded-full bg-ink px-1.5 font-mono text-[12px] text-lime">
+                  {chips.length}
+                </span>
               )}
-            </h1>
+            </span>
+            <span aria-hidden="true" className="font-mono transition-transform group-open:rotate-45">
+              +
+            </span>
+          </summary>
+          <div className="mt-4">{filters}</div>
+        </details>
+        <aside aria-label="Filters" className="hidden lg:block">
+          {filters}
+        </aside>
 
-            <SortLinks raw={raw} current={params.sort ?? "featured"} />
+        <div className="min-w-0">
+          {/* ------------------------------------------ count + chips + sort */}
+          <div className="mb-5 space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="mr-2 font-mono text-[13px] font-bold uppercase" aria-live="polite">
+                {total === 0 ? (
+                  "0 results"
+                ) : (
+                  <>
+                    {start + 1}–{Math.min(start + PAGE_SIZE, total)} of {reviewCount(total)} results
+                  </>
+                )}
+              </p>
+              {chips.map((c) => (
+                <Chip key={c.label} href={c.href} tone="lime" removable>
+                  <span className="sr-only">Remove filter: </span>
+                  {c.label}
+                </Chip>
+              ))}
+              {chips.length > 1 && (
+                <Link href={params.q ? `/s?q=${encodeURIComponent(params.q)}` : "/s"} className="link ml-1 text-[13px] font-semibold">
+                  Clear all
+                </Link>
+              )}
+            </div>
+
+            <nav aria-label="Sort results" className="no-scrollbar -mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+              <ul className="inline-flex border-[3px] border-ink bg-card shadow-brut-sm">
+                {Object.entries(SORT_LABELS).map(([key, label], i) => (
+                  <li key={key} className={i > 0 ? "border-l-[3px] border-ink" : ""}>
+                    <Link
+                      href={buildUrl(raw, { sort: key === "featured" ? null : key })}
+                      aria-current={sort === key ? "true" : undefined}
+                      className={`block whitespace-nowrap px-3 py-2 text-[13px] font-semibold ${
+                        sort === key ? "bg-ink text-lime" : "hover:bg-sun"
+                      }`}
+                    >
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
           </div>
 
-          {/* -------------------------------------------------- results */}
+          {/* ---------------------------------------------------- results */}
           {total === 0 ? (
-            <NoResults query={params.q} />
+            <NoResults query={params.q} filtered={chips.length > 0} />
           ) : (
-            <div className="bg-white">
-              {pageItems.map((p) => (
-                <SearchResultCard key={p.asin} product={p} />
+            <ul className="grid grid-cols-2 gap-4 md:gap-5 xl:grid-cols-3 2xl:grid-cols-4">
+              {items.map((p, i) => (
+                <li key={p.asin} className="min-w-0">
+                  <ProductCard product={p} showAddToCart priority={i < 3} />
+                </li>
               ))}
-            </div>
+            </ul>
           )}
 
-          {pageCount > 1 && (
-            <Pagination raw={raw} page={page} pageCount={pageCount} />
-          )}
+          {pageCount > 1 && <Pagination raw={raw} page={page} pageCount={pageCount} />}
         </div>
       </div>
-    </div>
+    </Container>
   );
 }
 
 const SORT_LABELS: Record<string, string> = {
-  featured: "Featured",
-  "price-asc": "Price: Low to High",
-  "price-desc": "Price: High to Low",
-  rating: "Avg. Customer Review",
-  reviews: "Most Reviewed",
-  newest: "Newest Arrivals",
+  featured: "Best match",
+  reviews: "Most reviewed",
+  rating: "Top rated",
+  "price-asc": "Price ↑",
+  "price-desc": "Price ↓",
+  newest: "Newest",
 };
 
-/**
- * A <select> would need client JS to navigate on change; rendering the sort
- * options as links keeps the whole page a server component.
- */
-function SortLinks({ raw, current }: { raw: RawParams; current: string }) {
-  return (
-    <div className="flex items-center gap-2 text-[14px]">
-      <span className="text-ink">Sort by:</span>
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {Object.entries(SORT_LABELS).map(([key, label]) => (
-          <Link
-            key={key}
-            href={buildUrl(raw, { sort: key === "featured" ? null : key })}
-            className={
-              current === key
-                ? "font-bold text-ink"
-                : "link-teal"
-            }
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
+type ActiveChip = { label: string; href: string };
+
+/** Every active filter as a removable chip: the chip links to the URL without it. */
+function activeChips(
+  raw: RawParams,
+  params: ReturnType<typeof parseParams>,
+  buckets: { label: string; min: number; max: number }[],
+): ActiveChip[] {
+  const out: ActiveChip[] = [];
+  if (params.q && params.category && params.category !== "all") {
+    const name = CATEGORIES.find((c) => c.slug === params.category)?.short ?? params.category;
+    out.push({ label: name, href: buildUrl(raw, { c: null }) });
+  }
+  for (const b of params.brands ?? []) out.push({ label: b, href: toggleBrand(raw, b) });
+  if (params.minPrice != null || params.maxPrice != null) {
+    const bucket = buckets.find(
+      (b) => b.min === params.minPrice && (b.max === params.maxPrice || (params.maxPrice == null && b.max === Number.MAX_SAFE_INTEGER)),
+    );
+    const label =
+      bucket?.label ??
+      (params.maxPrice != null
+        ? `${money(params.minPrice ?? 0)} – ${money(params.maxPrice)}`
+        : `${money(params.minPrice ?? 0)} & up`);
+    out.push({ label, href: buildUrl(raw, { min: null, max: null }) });
+  }
+  if (params.minRating != null) out.push({ label: `${params.minRating}★ & up`, href: buildUrl(raw, { rating: null }) });
+  if (params.expressOnly) out.push({ label: "Express", href: buildUrl(raw, { express: null, prime: null }) });
+  if (params.dealsOnly) out.push({ label: "On sale", href: buildUrl(raw, { deals: null }) });
+  return out;
 }
 
-function Pagination({
-  raw,
-  page,
-  pageCount,
-}: {
-  raw: RawParams;
-  page: number;
-  pageCount: number;
-}) {
-  // A sliding window keeps the control small when there are many pages.
+function Pagination({ raw, page, pageCount }: { raw: RawParams; page: number; pageCount: number }) {
+  // A sliding window keeps the control short when there are many pages.
   const from = Math.max(1, Math.min(page - 2, pageCount - 4));
-  const pages = Array.from(
-    { length: Math.min(5, pageCount) },
-    (_, i) => from + i,
-  ).filter((n) => n >= 1 && n <= pageCount);
+  const pages = Array.from({ length: Math.min(5, pageCount) }, (_, i) => from + i);
+  const href = (n: number) => buildUrl(raw, { page: n === 1 ? null : String(n) });
+  const block = "grid h-12 min-w-12 place-items-center border-[3px] border-ink px-3 font-display text-[18px] font-extrabold";
 
   return (
-    <nav
-      aria-label="Search results pages"
-      className="mt-3 flex items-center justify-center gap-2 bg-white py-4"
-    >
-      <PageLink
-        raw={raw}
-        to={page - 1}
-        disabled={page === 1}
-        label="Previous"
-      />
+    <nav aria-label="Search results pages" className="mt-10 flex flex-wrap items-center justify-center gap-2">
+      {page > 1 ? (
+        <Link href={href(page - 1)} className={`${block} bg-card shadow-brut-sm press`}>
+          <span aria-hidden="true">←</span>
+          <span className="sr-only">Previous page</span>
+        </Link>
+      ) : (
+        <span aria-hidden="true" className={`${block} bg-paper-deep text-ink/30`}>
+          ←
+        </span>
+      )}
       {pages.map((n) => (
         <Link
           key={n}
-          href={buildUrl(raw, { page: n === 1 ? null : String(n) })}
+          href={href(n)}
           aria-current={n === page ? "page" : undefined}
-          className={`min-w-[38px] rounded border px-3 py-1.5 text-center text-[14px] ${
-            n === page
-              ? "border-[#e77600] bg-[#fef8f2] font-bold text-ink"
-              : "border-line bg-white text-ink hover:bg-[#f7fafa]"
-          }`}
+          className={`${block} ${n === page ? "bg-ink text-lime" : "bg-card shadow-brut-sm press"}`}
         >
           {n}
         </Link>
       ))}
-      <PageLink
-        raw={raw}
-        to={page + 1}
-        disabled={page === pageCount}
-        label="Next"
-      />
+      {page < pageCount ? (
+        <Link href={href(page + 1)} className={`${block} bg-card shadow-brut-sm press`}>
+          <span aria-hidden="true">→</span>
+          <span className="sr-only">Next page</span>
+        </Link>
+      ) : (
+        <span aria-hidden="true" className={`${block} bg-paper-deep text-ink/30`}>
+          →
+        </span>
+      )}
     </nav>
   );
 }
 
-function PageLink({
-  raw,
-  to,
-  disabled,
-  label,
-}: {
-  raw: RawParams;
-  to: number;
-  disabled: boolean;
-  label: string;
-}) {
-  if (disabled) {
-    return (
-      <span className="rounded border border-line bg-[#f7f8f8] px-3 py-1.5 text-[14px] text-[#a1a1a1]">
-        {label}
-      </span>
-    );
-  }
+function NoResults({ query, filtered }: { query?: string; filtered: boolean }) {
   return (
-    <Link
-      href={buildUrl(raw, { page: to === 1 ? null : String(to) })}
-      className="rounded border border-line bg-white px-3 py-1.5 text-[14px] text-ink hover:bg-[#f7fafa]"
-    >
-      {label}
-    </Link>
-  );
-}
-
-function NoResults({ query }: { query?: string }) {
-  return (
-    <div className="bg-white px-6 py-12 text-center">
-      <h2 className="mb-2 text-[21px] font-bold text-ink">
-        No results{query ? ` for "${query}"` : ""}
-      </h2>
-      <p className="mb-4 text-[14px] text-[#565959]">
-        Try checking your spelling, using fewer words, or removing some
-        filters.
-      </p>
-      <Link href="/s" className="text-[14px] link-teal">
-        Browse all departments
-      </Link>
+    <div className="brut relative overflow-hidden bg-sun px-6 py-14 text-center">
+      <div aria-hidden="true" className="dot-grid absolute inset-0 opacity-10" />
+      <div className="relative">
+        <p className="font-display text-[64px] font-extrabold leading-none">¯\_(ツ)_/¯</p>
+        <h2 className="mt-6 font-display text-[28px] font-extrabold">
+          Nothing matched{query ? ` “${query}”` : ""}.
+        </h2>
+        <p className="mx-auto mt-2 max-w-md text-[16px]">
+          {filtered ? "Try removing a filter or two." : "Try fewer words, or a brand name like Sony, LEGO or Ninja."}
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <ButtonLink href="/s">Browse everything</ButtonLink>
+          <ButtonLink href="/deals" variant="pink">
+            See the deals
+          </ButtonLink>
+        </div>
+      </div>
     </div>
   );
 }
