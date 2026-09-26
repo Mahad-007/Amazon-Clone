@@ -21,10 +21,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # deployment_status fires for every state; only act on a live production one.
+    # Vercel names the environment "Production – <project>", hence startsWith.
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event.deployment_status.state == 'success' &&
-       github.event.deployment_status.environment == 'Production')
+       startsWith(github.event.deployment_status.environment, 'Production'))
 
     steps:
       - uses: actions/checkout@v5
