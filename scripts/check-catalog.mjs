@@ -1,13 +1,13 @@
 /**
  * Catalogue integrity gate for CI.
  *
- * src/data/products.json is generated, committed, and read by every page. A
- * malformed entry would not fail typecheck — it would ship a broken grid. So
- * the shape is asserted here instead.
+ * supabase/seed/products.json is generated, committed, and seeded into the
+ * products table. Postgres constraints catch most bad rows at push time, but
+ * this fails faster and with a readable message.
  */
 import fs from "node:fs";
 
-const products = JSON.parse(fs.readFileSync("src/data/products.json", "utf8"));
+const products = JSON.parse(fs.readFileSync("supabase/seed/products.json", "utf8"));
 const CATEGORIES = [
   "electronics", "computers", "home-kitchen", "fashion", "sports",
   "toys", "beauty", "tools", "pets", "books",

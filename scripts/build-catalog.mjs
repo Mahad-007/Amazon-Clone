@@ -1,5 +1,7 @@
 /**
- * Turns raw scraped Amazon search results into src/data/products.json.
+ * Turns raw scraped search results into supabase/seed/products.json, the seed
+ * input for the catalogue tables (scripts/catalog-to-sql.mjs turns it into a
+ * migration).
  *
  * The scrape gives us real titles, prices, ratings, review counts and image
  * URLs. It does NOT give us the things a storefront needs to feel complete:
@@ -390,7 +392,7 @@ const synthesisedPrices = products.filter((p) => p.priceSynthesised).length;
 
 products.sort((a, b) => b.reviewCount - a.reviewCount);
 
-const outDir = path.join(process.cwd(), "src", "data");
+const outDir = path.join(process.cwd(), "supabase", "seed");
 fs.mkdirSync(outDir, { recursive: true });
 const outFile = path.join(outDir, "products.json");
 fs.writeFileSync(outFile, `${JSON.stringify(products, null, 0)}\n`);
