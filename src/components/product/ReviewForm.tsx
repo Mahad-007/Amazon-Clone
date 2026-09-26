@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { submitReview } from "@/app/actions/reviews";
+import { buttonStyles } from "@/components/ui/Button";
+import { FormError, inputStyles } from "@/components/ui/Field";
+
+const STAR = "M12 2.5l2.94 6.28 6.86.74-5.13 4.63 1.43 6.77L12 17.47 5.9 20.92l1.43-6.77L2.2 9.52l6.86-.74z";
+const LABELS = ["", "Hated it", "Meh", "It's fine", "Liked it", "Love it"];
 
 export function ReviewForm({
   asin,
@@ -22,10 +27,7 @@ export function ReviewForm({
 
   if (!signedIn) {
     return (
-      <Link
-        href={`/signin?next=/product/${asin}`}
-        className="block rounded-full border border-line bg-white py-1.5 text-center text-[13px] text-ink hover:bg-[#f7fafa]"
-      >
+      <Link href={`/signin?next=/product/${asin}`} className={buttonStyles({ variant: "secondary", block: true })}>
         Sign in to write a review
       </Link>
     );
@@ -33,27 +35,28 @@ export function ReviewForm({
 
   if (done || !canReview) {
     return (
-      <p className="text-[13px] text-success">
-        Thanks — your review has been posted.
+      <p className="border-[3px] border-ink bg-lime px-3 py-2.5 text-[14px] font-semibold">
+        Thanks, your review has been posted.
       </p>
     );
   }
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await submitReview({ asin, rating, title, body });
+      if (result.ok) setDone(true);
+      else setError(result.error);
+    });
+  };
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        setError(null);
-        startTransition(async () => {
-          const result = await submitReview({ asin, rating, title, body });
-          if (result.ok) setDone(true);
-          else setError(result.error);
-        });
-      }}
-      className="space-y-2"
-    >
+    <form onSubmit={handleSubmit} className="space-y-3">
       <fieldset>
-        <legend className="sr-only">Your rating</legend>
+        <legend className="mb-1.5 font-mono text-[12px] font-bold uppercase tracking-wider">
+          Your rating: <span className="text-muted">{LABELS[rating]}</span>
+        </legend>
         <div className="flex gap-1">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
@@ -62,16 +65,15 @@ export function ReviewForm({
               onClick={() => setRating(n)}
               aria-label={`${n} star${n === 1 ? "" : "s"}`}
               aria-pressed={rating === n}
-              className="p-0.5"
+              className="p-0.5 transition-transform hover:scale-110"
             >
-              <svg
-                viewBox="0 0 24 24"
-                className={`h-6 w-6 ${n <= rating ? "text-[#ffa41c]" : "text-[#d5d9d9]"}`}
-                aria-hidden="true"
-              >
+              <svg viewBox="0 0 24 24" className="h-8 w-8" aria-hidden="true">
                 <path
-                  fill="currentColor"
-                  d="M12 17.27 5.82 21l1.64-7.03L2 9.24l7.19-.61L12 2l2.81 6.63 7.19.61-5.46 4.73L18.18 21z"
+                  d={STAR}
+                  fill={n <= rating ? "var(--color-sun)" : "var(--color-card)"}
+                  stroke="var(--color-ink)"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
                 />
               </svg>
             </button>
@@ -86,29 +88,25 @@ export function ReviewForm({
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Add a headline"
           maxLength={120}
-          className="w-full rounded border border-line px-2 py-1.5 text-[13px]"
+          className={inputStyles}
         />
       </label>
 
       <label className="block">
-        <span className="sr-only">Review body</span>
+        <span className="sr-only">Review</span>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="What did you like or dislike?"
-          rows={3}
+          rows={4}
           maxLength={2000}
-          className="w-full rounded border border-line px-2 py-1.5 text-[13px]"
+          className={`${inputStyles} h-auto py-2.5`}
         />
       </label>
 
-      {error && <p className="text-[13px] text-price">{error}</p>}
+      {error && <FormError>{error}</FormError>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-full bg-cta py-1.5 text-[13px] text-ink hover:bg-cta-hover disabled:opacity-60"
-      >
+      <button type="submit" disabled={pending} className={buttonStyles({ block: true })}>
         {pending ? "Submitting…" : "Submit review"}
       </button>
     </form>

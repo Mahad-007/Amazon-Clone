@@ -3,120 +3,83 @@
 import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import type { Product } from "@/lib/types";
-import { Price } from "@/components/ui/Price";
 import { addToCartForm, buyNowForm } from "@/app/actions/cart";
+import { buttonStyles } from "@/components/ui/Button";
 import { deliveryDate, formatDelivery } from "@/lib/format";
+import { FREE_SHIPPING_THRESHOLD } from "@/lib/pricing";
 
 /**
- * The boxed right-hand column: price, delivery promise, stock, quantity and
- * the two CTAs.
+ * The buy panel: stock, delivery promise, quantity and the two CTAs.
  *
  * It is a real <form> with two submit buttons pointing at different server
- * actions, so quantity + Add to Cart + Buy Now all work before React hydrates
- * and with JavaScript disabled. "Buy Now" adds and redirects to checkout,
- * which is the behaviour the amber button implies.
+ * actions, so quantity + Add to Cart + Buy now all work before React
+ * hydrates and with JavaScript disabled. "Buy now" adds, then goes straight
+ * to checkout.
  */
 export function BuyBox({ product }: { product: Product }) {
-  const fast = deliveryDate(product.express ? 2 : 5);
-  const free = deliveryDate(product.express ? 4 : 8);
+  const arrives = deliveryDate(product.express ? 2 : 5);
   const inStock = product.stock > 0;
+  const low = inStock && product.stock <= 8;
+  const freeShipping = product.priceCents >= FREE_SHIPPING_THRESHOLD;
 
   return (
-    <form action={addToCartForm} className="rounded-lg border border-line bg-white p-4">
+    <form action={addToCartForm} className="border-[3px] border-ink bg-card shadow-brut">
       <input type="hidden" name="asin" value={product.asin} />
-      <div className="mb-2">
-        <Price cents={product.priceCents} size="lg" />
+
+      <div
+        className={`flex items-center justify-between gap-2 border-b-[3px] border-ink px-4 py-2 font-mono text-[12px] font-bold uppercase tracking-wider ${
+          inStock ? (low ? "bg-pink" : "bg-lime") : "bg-paper-deep"
+        }`}
+      >
+        <span>{inStock ? (low ? `Only ${product.stock} left` : "In stock") : "Sold out"}</span>
+        <span>{product.express ? "⚡ Express" : "Standard"}</span>
       </div>
 
-      <p className="mb-3 text-[14px] text-ink">
-        FREE Returns{" "}
-        <span className="text-[13px] text-[#565959]">
-          on eligible orders
-        </span>
-      </p>
+      <div className="space-y-4 p-4">
+        <dl className="space-y-1.5 text-[14px]">
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Arrives</dt>
+            <dd className="text-right font-semibold">{formatDelivery(arrives)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-muted">Shipping</dt>
+            <dd className="text-right font-semibold">
+              {freeShipping ? "Free" : "Free on orders over $35"}
+            </dd>
+          </div>
+        </dl>
 
-      <p className="mb-1 text-[14px] text-ink">
-        FREE delivery{" "}
-        <span className="font-bold">{formatDelivery(free)}</span>
-      </p>
-      <p className="mb-3 text-[14px] text-ink">
-        Or fastest delivery{" "}
-        <span className="font-bold">{formatDelivery(fast)}</span>
-      </p>
-
-      <p className="mb-3 flex items-center gap-1 text-[13px] text-[#565959]">
-        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7m0 9.5A2.5 2.5 0 1 1 14.5 9 2.5 2.5 0 0 1 12 11.5"
-          />
-        </svg>
-        Deliver to United States
-      </p>
-
-      {inStock ? (
-        <p className="mb-3 text-[18px] text-success">In Stock</p>
-      ) : (
-        <p className="mb-3 text-[18px] text-price">Currently unavailable</p>
-      )}
-
-      {inStock && product.stock <= 8 && (
-        <p className="mb-3 text-[14px] text-price">
-          Only {product.stock} left in stock — order soon.
-        </p>
-      )}
-
-      <label className="mb-3 block">
-        <span className="sr-only">Quantity</span>
-        <select
-          name="qty"
-          aria-label="Quantity"
-          defaultValue={1}
-          className="w-full rounded-lg border border-line bg-[#f0f2f2] px-2 py-1.5 text-[13px] shadow-sm"
-        >
-          {Array.from({ length: Math.min(10, Math.max(1, product.stock)) }, (_, i) => i + 1).map(
-            (n) => (
+        <label className="block">
+          <span className="mb-1.5 block font-mono text-[12px] font-bold uppercase tracking-wider">Quantity</span>
+          <select
+            name="qty"
+            defaultValue={1}
+            disabled={!inStock}
+            className="h-12 w-full cursor-pointer rounded-brut border-[3px] border-ink bg-paper px-3 text-[15px] font-semibold"
+          >
+            {Array.from({ length: Math.min(10, Math.max(1, product.stock)) }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>
-                Quantity: {n}
+                {n}
               </option>
-            ),
-          )}
-        </select>
-      </label>
+            ))}
+          </select>
+        </label>
 
-      <Cta inStock={inStock} />
+        <Cta inStock={inStock} />
 
-      <p className="mb-3 flex items-center gap-1.5 text-[12px] link-teal">
-        <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#565959]" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M18 8h-1V6a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2M9 6a3 3 0 0 1 6 0v2H9Zm3 12a2 2 0 1 1 2-2 2 2 0 0 1-2 2"
-          />
-        </svg>
-        Secure transaction
-      </p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t-2 border-dashed border-ink pt-3 font-mono text-[12px]">
+          <dt className="text-muted">Ships from</dt>
+          <dd>HAUL</dd>
+          <dt className="text-muted">Sold by</dt>
+          <dd className="truncate">{product.brand}</dd>
+          <dt className="text-muted">Returns</dt>
+          <dd>30 days, free</dd>
+        </dl>
 
-      <dl className="space-y-1 border-t border-line pt-3 text-[13px]">
-        <div className="flex gap-2">
-          <dt className="w-[70px] shrink-0 text-[#565959]">Ships from</dt>
-          <dd className="text-ink">Amazon.com</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-[70px] shrink-0 text-[#565959]">Sold by</dt>
-          <dd className="text-ink">{product.brand}</dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="w-[70px] shrink-0 text-[#565959]">Returns</dt>
-          <dd className="link-teal">30-day refund/replacement</dd>
-        </div>
-      </dl>
-
-      <Link
-        href="/cart"
-        className="mt-3 block rounded-full border border-line bg-white py-1.5 text-center text-[13px] text-ink hover:bg-[#f7fafa]"
-      >
-        Go to Cart
-      </Link>
+        <Link href="/cart" className="link block text-center font-mono text-[12px] font-bold uppercase">
+          Go to cart →
+        </Link>
+      </div>
     </form>
   );
 }
@@ -127,25 +90,19 @@ export function BuyBox({ product }: { product: Product }) {
  */
 function Cta({ inStock }: { inStock: boolean }) {
   const { pending } = useFormStatus();
-
   return (
-    <>
-      <button
-        type="submit"
-        disabled={!inStock || pending}
-        className="mb-2 w-full rounded-full bg-cta py-2 text-[14px] text-ink shadow-sm hover:bg-cta-hover disabled:opacity-60"
-      >
+    <div className="space-y-3">
+      <button type="submit" disabled={!inStock || pending} className={buttonStyles({ size: "lg", block: true })}>
         {pending ? "Adding…" : "Add to Cart"}
       </button>
-
       <button
         type="submit"
         formAction={buyNowForm}
         disabled={!inStock || pending}
-        className="mb-3 w-full rounded-full bg-buy py-2 text-[14px] text-ink shadow-sm hover:bg-buy-hover disabled:opacity-60"
+        className={buttonStyles({ variant: "ink", size: "lg", block: true })}
       >
-        Buy Now
+        Buy now
       </button>
-    </>
+    </div>
   );
 }
