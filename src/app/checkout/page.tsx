@@ -6,6 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { CheckoutForm } from "@/components/checkout/CheckoutForm";
 
 export const metadata: Metadata = { title: "Checkout" };
+// Reads the session and the cart, so it is rendered per request.
 export const dynamic = "force-dynamic";
 
 export default async function CheckoutPage() {
@@ -25,6 +26,7 @@ export default async function CheckoutPage() {
       asin: x.product!.asin,
       title: x.product!.shortTitle,
       image: x.product!.image,
+      category: x.product!.category,
       priceCents: x.product!.priceCents,
       qty: x.line.qty,
       express: x.product!.express,

@@ -1,163 +1,139 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { readCart } from "@/lib/cart";
-import { getProducts, bestSellers, relatedToAny } from "@/lib/catalog";
+import { bestSellers, getProducts, relatedToAny } from "@/lib/catalog";
 import { money } from "@/lib/format";
-import { FREE_SHIPPING_THRESHOLD } from "@/lib/pricing";
+import { quote } from "@/lib/pricing";
+import { TINT } from "@/lib/tint";
+import type { CartLine, Product } from "@/lib/types";
+import { Container } from "@/components/layout/Container";
+import { Shelf } from "@/components/product/Shelf";
+import { ButtonLink } from "@/components/ui/Button";
+import { ExpressBadge } from "@/components/ui/ExpressBadge";
 import { Price } from "@/components/ui/Price";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { Sticker } from "@/components/ui/Sticker";
 import { QtySelect } from "@/components/cart/QtySelect";
 import { CartLineActions } from "@/components/cart/CartLineActions";
-import { Rail } from "@/components/home/Rail";
-import { PrimeBadge } from "@/components/ui/PrimeBadge";
+import { FreeShippingMeter } from "@/components/cart/FreeShippingMeter";
+import { Receipt } from "@/components/checkout/Receipt";
 
-export const metadata: Metadata = { title: "Shopping Cart" };
+export const metadata: Metadata = { title: "Your haul" };
 
 // The cart is per-request state, so this page can never be prerendered.
 export const dynamic = "force-dynamic";
 
+type Line = { line: CartLine; product: Product };
+
+const plural = (n: number) => `${n} item${n === 1 ? "" : "s"}`;
+
 export default async function CartPage() {
   const lines = await readCart();
-  const products = new Map(
-    (await getProducts(lines.map((l) => l.asin))).map((p) => [p.asin, p]),
-  );
+  const products = new Map((await getProducts(lines.map((l) => l.asin))).map((p) => [p.asin, p]));
+  const withProduct = lines
+    .map((line) => ({ line, product: products.get(line.asin) }))
+    .filter((x): x is Line => Boolean(x.product));
 
-  const active = lines
-    .filter((l) => !l.saved)
-    .map((l) => ({ line: l, product: products.get(l.asin) }))
-    .filter((x) => x.product);
+  const active = withProduct.filter((x) => !x.line.saved);
+  const saved = withProduct.filter((x) => x.line.saved);
 
-  const saved = lines
-    .filter((l) => l.saved)
-    .map((l) => ({ line: l, product: products.get(l.asin) }))
-    .filter((x) => x.product);
+  if (active.length === 0 && saved.length === 0) return <EmptyCart />;
 
   const itemCount = active.reduce((n, x) => n + x.line.qty, 0);
-  const subtotal = active.reduce(
-    (n, x) => n + (x.product?.priceCents ?? 0) * x.line.qty,
-    0,
+  const subtotal = active.reduce((n, x) => n + x.product.priceCents * x.line.qty, 0);
+  const { shipping, tax, total } = quote(subtotal);
+  const recommendations = await relatedToAny(
+    withProduct.map((x) => x.line.asin),
+    14,
   );
 
-  if (active.length === 0 && saved.length === 0) {
-    return <EmptyCart />;
-  }
-
   return (
-    <div className="mx-auto max-w-[1500px] px-4 py-4">
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="min-w-0 flex-1">
-          <section className="bg-white px-5 py-4">
-            <div className="flex items-baseline justify-between border-b border-line pb-2">
-              <h1 className="text-[28px] text-ink">Shopping Cart</h1>
-              <span className="hidden text-[13px] text-[#565959] sm:inline">
-                Price
-              </span>
-            </div>
+    <Container className="pt-8 md:pt-12">
+      <div className="mb-8 flex flex-wrap items-end gap-x-4 gap-y-2">
+        <h1 className="font-display text-[48px] font-extrabold leading-none tracking-[-0.03em] md:text-[72px]">
+          Your haul
+        </h1>
+        <Sticker tone="lime" tilt={-4} className="mb-2">
+          {plural(itemCount)}
+        </Sticker>
+      </div>
 
+      {/* One grid, three children: on phones the receipt sits right after the
+          items (before "Saved for later"); on desktop it is a sticky sidebar. */}
+      <div className="grid items-start gap-x-8 gap-y-12 lg:grid-cols-[1fr_380px]">
+          <section aria-labelledby="in-cart" className="min-w-0 lg:col-start-1">
+            <h2 id="in-cart" className="sr-only">
+              Items in your cart
+            </h2>
             {active.length === 0 ? (
-              <p className="py-6 text-[14px] text-[#565959]">
-                Your Shopping Cart is empty. Items you save for later appear
-                below.
+              <p className="border-[3px] border-dashed border-ink bg-card p-6 text-[15px]">
+                Nothing in the cart right now. Your saved items are below: move one back when you&apos;re ready.
               </p>
             ) : (
-              <ul>
-                {active.map(({ line, product }) => (
-                  <li
-                    key={line.asin}
-                    className="flex gap-4 border-b border-line py-4 last:border-b-0"
-                  >
-                    <Link
-                      href={`/product/${product!.asin}`}
-                      className="flex h-[140px] w-[140px] shrink-0 items-center justify-center sm:h-[180px] sm:w-[180px]"
-                    >
-                      <img
-                        src={product!.image}
-                        alt={product!.title}
-                        loading="lazy"
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    </Link>
-
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <div className="flex justify-between gap-4">
-                        <Link href={`/product/${product!.asin}`}>
-                          <h2 className="clamp-2 text-[18px] leading-6 link-teal">
-                            {product!.title}
-                          </h2>
-                        </Link>
-                        <span className="hidden shrink-0 sm:block">
-                          <Price
-                            cents={product!.priceCents * line.qty}
-                            size="md"
-                          />
-                        </span>
-                      </div>
-
-                      <p className="mt-1 text-[12px] text-success">In Stock</p>
-
-                      {product!.express && (
-                        <div className="mt-0.5">
-                          <PrimeBadge />
-                        </div>
-                      )}
-
-                      {product!.stock <= 8 && (
-                        <p className="mt-0.5 text-[12px] text-price">
-                          Only {product!.stock} left — order soon.
-                        </p>
-                      )}
-
-                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                        <QtySelect asin={line.asin} value={line.qty} />
-                        <span className="text-line-strong">|</span>
-                        <CartLineActions asin={line.asin} saved={false} />
-                      </div>
-
-                      <span className="mt-2 sm:hidden">
-                        <Price cents={product!.priceCents * line.qty} size="md" />
-                      </span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {active.length > 0 && (
-              <p className="pt-3 text-right text-[18px] text-ink">
-                Subtotal ({itemCount} item{itemCount === 1 ? "" : "s"}):{" "}
-                <span className="font-bold">{money(subtotal)}</span>
-              </p>
+              <>
+                <ul className="space-y-5">
+                  {active.map((x) => (
+                    <CartItem key={x.line.asin} {...x} />
+                  ))}
+                </ul>
+                <p className="mt-5 text-right font-display text-[20px] font-bold">
+                  Subtotal ({plural(itemCount)}): <span className="bg-lime px-1.5">{money(subtotal)}</span>
+                </p>
+              </>
             )}
           </section>
 
+        {active.length > 0 && (
+          <aside className="lg:sticky lg:top-[172px] lg:col-start-2 lg:row-span-2 lg:row-start-1">
+            <Receipt
+              title="Receipt"
+              meta={plural(itemCount)}
+              rows={[
+                { label: `Subtotal (${plural(itemCount)})`, value: money(subtotal) },
+                { label: "Shipping", value: shipping === 0 ? "FREE" : money(shipping) },
+                { label: "Est. tax (7.25%)", value: money(tax), muted: true },
+              ]}
+              totalLabel="Estimated total"
+              totalValue={money(total)}
+              footnote="Final prices are confirmed by the server when you place the order."
+            >
+              <FreeShippingMeter subtotal={subtotal} />
+              <ButtonLink href="/checkout" size="lg" block>
+                Proceed to checkout →
+              </ButtonLink>
+            </Receipt>
+          </aside>
+        )}
+
           {saved.length > 0 && (
-            <section className="mt-4 bg-white px-5 py-4">
-              <h2 className="mb-2 border-b border-line pb-2 text-[21px] text-ink">
-                Saved for later ({saved.length})
-              </h2>
-              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <section aria-labelledby="saved-heading" className="min-w-0 lg:col-start-1">
+              <div className="mb-4 flex items-center gap-3">
+                <h2 id="saved-heading" className="font-display text-[28px] font-extrabold tracking-tight">
+                  Saved for later
+                </h2>
+                <span className="grid h-8 min-w-8 place-items-center rounded-full border-2 border-ink bg-sun px-2 font-mono text-[13px] font-bold">
+                  {saved.length}
+                </span>
+              </div>
+              <ul className="grid gap-4 sm:grid-cols-2">
                 {saved.map(({ line, product }) => (
-                  <li key={line.asin} className="flex gap-3 py-2">
+                  <li key={line.asin} className="flex gap-3 border-[3px] border-ink bg-card p-3 shadow-brut-sm">
                     <Link
-                      href={`/product/${product!.asin}`}
-                      className="flex h-[110px] w-[110px] shrink-0 items-center justify-center"
+                      href={`/product/${product.asin}`}
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      className={`flex h-24 w-24 shrink-0 items-center justify-center border-2 border-ink p-2 ${TINT[product.category]}`}
                     >
-                      <img
-                        src={product!.image}
-                        alt={product!.title}
-                        loading="lazy"
-                        className="max-h-full max-w-full object-contain"
-                      />
+                      <img src={product.image} alt="" loading="lazy" className="max-h-full max-w-full object-contain mix-blend-multiply" />
                     </Link>
-                    <div className="min-w-0">
-                      <Link href={`/product/${product!.asin}`}>
-                        <h3 className="clamp-2 text-[14px] link-teal">
-                          {product!.shortTitle}
-                        </h3>
-                      </Link>
-                      <div className="mt-1">
-                        <Price cents={product!.priceCents} size="sm" />
-                      </div>
-                      <div className="mt-1.5">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <h3 className="clamp-2 text-[14px] font-semibold leading-snug">
+                        <Link href={`/product/${product.asin}`} className="hover:underline">
+                          {product.shortTitle}
+                        </Link>
+                      </h3>
+                      <Price cents={product.priceCents} size="sm" />
+                      <div className="mt-auto pt-1">
                         <CartLineActions asin={line.asin} saved />
                       </div>
                     </div>
@@ -166,94 +142,126 @@ export default async function CartPage() {
               </ul>
             </section>
           )}
+      </div>
+
+      {recommendations.length > 0 && (
+        <section className="mt-16">
+          <SectionHeading title="Goes with your haul" />
+          <Shelf products={recommendations} label="Recommended for your cart" />
+        </section>
+      )}
+    </Container>
+  );
+}
+
+/** One active cart line: image well, details, quantity and actions. */
+function CartItem({ line, product }: Line) {
+  const href = `/product/${product.asin}`;
+  const low = product.stock <= 8;
+
+  return (
+    <li className="flex gap-4 border-[3px] border-ink bg-card p-3 shadow-brut sm:gap-5 sm:p-4">
+      <Link
+        href={href}
+        aria-hidden="true"
+        tabIndex={-1}
+        className={`flex h-28 w-28 shrink-0 items-center justify-center border-2 border-ink p-3 sm:h-40 sm:w-40 ${TINT[product.category]}`}
+      >
+        <img src={product.image} alt="" loading="lazy" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+      </Link>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted">{product.brand}</p>
+            <h3 className="clamp-2 mt-0.5 font-display text-[17px] font-bold leading-snug sm:text-[19px]">
+              <Link href={href} className="hover:underline">
+                {product.shortTitle}
+              </Link>
+            </h3>
+          </div>
+          <span className="hidden shrink-0 sm:block">
+            <Price cents={product.priceCents * line.qty} size="md" />
+          </span>
         </div>
 
-        {/* ------------------------------------------------ checkout box */}
-        {active.length > 0 && (
-          <aside className="w-full shrink-0 lg:w-[300px]">
-            <div className="bg-white px-5 py-4">
-              {subtotal >= FREE_SHIPPING_THRESHOLD && (
-                <p className="mb-2 flex items-start gap-1.5 text-[13px] text-ink">
-                  <span className="mt-0.5 text-success" aria-hidden="true">
-                    ✓
-                  </span>
-                  <span>
-                    Your order qualifies for FREE Shipping.
-                  </span>
-                </p>
-              )}
-
-              <p className="mb-3 text-[18px] text-ink">
-                Subtotal ({itemCount} item{itemCount === 1 ? "" : "s"}):{" "}
-                <span className="font-bold">{money(subtotal)}</span>
-              </p>
-
-              <Link
-                href="/checkout"
-                className="block rounded-full bg-cta py-2 text-center text-[14px] text-ink shadow-sm hover:bg-cta-hover"
-              >
-                Proceed to checkout
-              </Link>
-            </div>
-          </aside>
-        )}
-      </div>
-
-      <div className="mt-4">
-        <Rail
-          title="Customers who bought items in your cart also bought"
-          products={await relatedToAny(
-            [...active, ...saved].map((x) => x.line.asin),
-            14,
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
+          {product.express && <ExpressBadge />}
+          {low ? (
+            <Sticker tone="pink" tilt={0}>
+              Only {product.stock} left
+            </Sticker>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-bold uppercase">
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full border-2 border-ink bg-lime" />
+              In stock
+            </span>
           )}
-        />
+          {line.qty > 1 && <span className="font-mono text-[12px] text-muted">{money(product.priceCents)} each</span>}
+        </div>
+
+        <span className="mt-2 sm:hidden">
+          <Price cents={product.priceCents * line.qty} size="md" />
+        </span>
+
+        <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-2 pt-3">
+          <QtySelect asin={line.asin} value={line.qty} label={`Quantity for ${product.shortTitle}`} />
+          <CartLineActions asin={line.asin} saved={false} />
+        </div>
       </div>
-    </div>
+    </li>
   );
 }
 
 async function EmptyCart() {
+  const popular = await bestSellers(14);
+
   return (
-    <div className="mx-auto max-w-[1500px] px-4 py-4">
-      <div className="flex flex-col items-center gap-6 bg-white px-6 py-10 sm:flex-row sm:items-start">
-        <svg
-          viewBox="0 0 24 24"
-          className="h-[120px] w-[120px] shrink-0 text-[#d5d9d9]"
-          aria-hidden="true"
-        >
-          <path
-            fill="currentColor"
-            d="M7 18a2 2 0 1 0 2 2 2 2 0 0 0-2-2m10 0a2 2 0 1 0 2 2 2 2 0 0 0-2-2M7.2 14.6h9.3c.75 0 1.41-.41 1.75-1.03l3.24-5.88A.75.75 0 0 0 20.83 6.6H6.21l-.71-1.5H2v1.5h2.3l3.3 6.96-1.24 2.24A1.5 1.5 0 0 0 7.2 17.1h12v-1.5H7.6a.19.19 0 0 1-.17-.28z"
-          />
-        </svg>
-
-        <div>
-          <h1 className="mb-2 text-[28px] text-ink">
-            Your Amazon Cart is empty
-          </h1>
-          <p className="mb-4 text-[14px] text-[#565959]">
-            Check your Saved for later items below, or continue shopping.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full bg-cta px-5 py-1.5 text-[14px] text-ink hover:bg-cta-hover"
-            >
-              Continue shopping
-            </Link>
-            <Link
-              href="/deals"
-              className="rounded-full border border-line bg-white px-5 py-1.5 text-[14px] text-ink hover:bg-[#f7fafa]"
-            >
-              Today&apos;s Deals
-            </Link>
+    <Container className="pt-8 md:pt-12">
+      <section className="brut relative overflow-hidden bg-sky p-8 md:p-12">
+        <div aria-hidden="true" className="dot-grid absolute inset-0 opacity-[0.12]" />
+        <div className="relative grid items-center gap-8 md:grid-cols-[1fr_auto]">
+          <div>
+            <Sticker tone="ink" tilt={-2}>
+              0 items
+            </Sticker>
+            <h1 className="mt-5 font-display text-[48px] font-extrabold leading-[0.95] tracking-[-0.03em] md:text-[76px]">
+              Your haul is
+              <br />
+              empty.
+            </h1>
+            <p className="mt-5 max-w-md text-[17px]">
+              Nothing in here yet. Start with the deals, or dig through all ten departments.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <ButtonLink href="/deals" variant="pink" size="lg">
+                Shop deals
+              </ButtonLink>
+              <ButtonLink href="/s" variant="secondary" size="lg">
+                Browse everything
+              </ButtonLink>
+            </div>
           </div>
+          <EmptyTote />
         </div>
-      </div>
+      </section>
 
-      <div className="mt-4">
-        <Rail title="Best Sellers" products={await bestSellers(14)} />
-      </div>
-    </div>
+      <section className="mt-16">
+        <SectionHeading title="Popular right now" href="/s?sort=reviews" />
+        <Shelf products={popular} label="Best sellers" />
+      </section>
+    </Container>
   );
 }
+
+/** A flat, outlined tote bag with nothing in it. */
+const EmptyTote = () => (
+  <svg viewBox="0 0 200 200" className="mx-auto hidden w-56 -rotate-6 md:block" aria-hidden="true">
+    <rect x="34" y="70" width="140" height="118" fill="var(--color-ink)" />
+    <path d="M26 62h140l-10 118H36z" fill="var(--color-lime)" stroke="var(--color-ink)" strokeWidth="6" strokeLinejoin="round" />
+    <path d="M66 62V46a30 30 0 0 1 60 0v16" fill="none" stroke="var(--color-ink)" strokeWidth="6" strokeLinecap="round" />
+    <text x="96" y="132" textAnchor="middle" fontFamily="var(--font-display)" fontWeight="800" fontSize="34" fill="var(--color-ink)">
+      HAUL
+    </text>
+  </svg>
+);
