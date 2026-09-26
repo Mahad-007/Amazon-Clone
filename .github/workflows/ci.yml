@@ -112,6 +112,11 @@ jobs:
         env:
           BASE_URL: http://localhost:3100
 
+      - name: Mobile layout — no horizontal overflow at 390px, no broken images
+        run: node scripts/layout-check.mjs / /s "/s?q=lego&c=toys" /deals /product/B0DBF65JYY /cart /signin /register /api
+        env:
+          BASE_URL: http://localhost:3100
+
       - name: Upload screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,182 +1,214 @@
-# Amazon Clone
+# HAUL
 
-[![CI](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/ci.yml/badge.svg)](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/ci.yml)
-[![Post-deploy smoke](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/smoke.yml/badge.svg)](https://github.com/Mahad-007/Amazon-Clone/actions/workflows/smoke.yml)
+[![CI](https://github.com/Mahad-007/haul/actions/workflows/ci.yml/badge.svg)](https://github.com/Mahad-007/haul/actions/workflows/ci.yml)
+[![Post-deploy smoke](https://github.com/Mahad-007/haul/actions/workflows/smoke.yml/badge.svg)](https://github.com/Mahad-007/haul/actions/workflows/smoke.yml)
 
-A rebuild of [amazon.com](https://www.amazon.com) — the core shopping flow, built from scratch in 24 hours.
+**A loud little store for stuff worth hauling home.** It has its own
+neo-brutalist interface, runs on a real Postgres backend and exposes a public
+REST API.
 
-### → **[shop-amazon-clone.vercel.app](https://shop-amazon-clone.vercel.app)**
+### → **[haul-shop.vercel.app](https://haul-shop.vercel.app)** · [API docs](https://haul-shop.vercel.app/api)
 
-Open it signed-out and buy something: search, add to cart, create an account,
-check out, and the order shows up in your history.
+Open it signed out and buy something: search, filter, add to cart, create an
+account, check out, then review what you bought and watch the product's rating
+move.
 
-![Home](.github/media/home.png)
+![HAUL home page](.github/media/home.png)
 
 ---
 
-## What this is
+## What changed in this version
 
-A working storefront, not a landing page. You can search 268 real products
-across 10 departments, filter them, read a product page, fill a cart as a
-guest, create an account, check out, and see the order in your order history.
-Reviews you write persist and are attributed to you.
+The first version was a pixel-level rebuild of amazon.com. 8x revised the brief:
+keep the idea and the backend, design the interface yourself, and make the
+backend real, meaning a working database and API with no mock data. This
+version does both.
 
-Everything behind the UI is real: the catalogue is scraped from live
-amazon.com search results, and identity, carts, orders and reviews live in
-Postgres with row-level security.
+| | Before | Now |
+| --- | --- | --- |
+| **Catalogue** | JSON file bundled at build time | `public.products` in Postgres, seeded by a migration |
+| **Search, facets, shelves** | JavaScript over an in-memory array | SQL functions, verified identical to the old logic on 11 queries |
+| **Reviews** | Generated text and an invented histogram | Real rows only. A trigger folds each review into the product's rating |
+| **Checkout** | Client-side inserts, with a rollback that RLS silently blocked | One transactional `place_order()` that prices every line from the database |
+| **API** | None | 22 endpoints at [`/api/v1`](https://haul-shop.vercel.app/api), with bearer or session auth |
+| **Interface** | Amazon's layout, colours and wordmark | HAUL: an original design system (see [DESIGN.md](DESIGN.md)) |
+| **CI** | Built without a database | Starts a throwaway Supabase, applies every migration and runs 3 e2e suites |
+
+## The design
+
+HAUL is **neo-brutalist**: warm cream paper, 3px ink borders, hard offset
+shadows, one display face, and four accents with one job each. Lime means
+act, pink means save, cobalt means go, and sun means rate. The style was
+picked for a store because its building blocks make shopping clearer: thick
+outlines turn buttons into obvious buttons, hard shadows give a real pressed
+state, and heavy borders make keyboard focus hard to miss. NN/g's guidance on
+the style mostly concerns restraint, and the system follows it: a small
+palette, a neutral body font, contrast-checked pairs and generous padding on
+dense pages.
+
+Choices that make it HAUL rather than a reskin:
+
+- **Editorial home page.** No carousel. Instead there is one statement, the
+  best live deal, a discount ticker, numbered departments, and a ranked
+  top-rated list with big numerals.
+- **Colour carries meaning.** Each department gets a tint, and product photos
+  blend into it (`mix-blend-multiply`), so a grid reads like a poster instead
+  of a wall of white boxes.
+- **The cart is a receipt.** Mono type, dashed rules, and a lime progress bar
+  toward free shipping.
+- **Checkout is three numbered steps** on one page, with a sticky receipt.
+
+Tokens, primitives and rules are documented in **[DESIGN.md](DESIGN.md)**.
+
+## Architecture
+
+**Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase (Postgres + Auth)**
+
+```
+Browser ──► Next.js server components ─┐
+                                       ├──► src/lib/catalog.ts ──► SQL functions (search, facets, deals, …)
+curl / apps ──► /api/v1 route handlers ┘    src/lib/cart.ts, orders.ts, reviews.ts ──► tables under RLS
+                                            place_order() ──► one transaction
+```
+
+Pages and the REST API call the same library functions, which call the same
+SQL. Neither has a private shortcut to the data.
+
+- **Postgres is the source of truth.** Everything is defined in
+  [`supabase/migrations/`](supabase/migrations):
+  - `0002_catalog.sql`: tables and functions.
+  - `0003`: the generated seed.
+  - `0004`: foreign keys and the review trigger.
+  - `0005`: RLS hardening from `supabase db advisors`.
+- **Row-level security does the authorisation.** API writes run as the calling
+  user, whether through a Supabase bearer token or the browser session, so
+  Postgres decides what they can touch. Asking for another shopper's order
+  returns 404, because RLS makes it indistinguishable from a missing one.
+- **Checkout can't be tampered with.** `place_order()` runs as the caller and:
+  - locks the cart rows, so a double-submit waits and then finds an empty cart;
+  - prices each line from `products`;
+  - writes the order and its line-item snapshots;
+  - clears only the active lines, so saved-for-later items survive.
+- **Real reviews move the rating.** `products.rating` is a generated column
+  that blends the scraped marketplace rating with HAUL reviews. The trigger
+  keeps the totals current, and the histogram is a view over real rows.
+- **Catalogue reads are cached.** They go through a cookie-less anon client
+  into the Next data cache under a `catalog` tag. A review write expires the
+  tag, so its effect on ratings shows up immediately.
+- **Search state lives in the URL.** Every filter is a plain link, so results
+  are server-rendered, shareable and back-button safe. Each facet is counted
+  ignoring its own filter, so ticking one brand never hides the others.
+- **The purchase flow works without JavaScript.** Add to cart, buy now,
+  quantity, delete, save for later, search, sign-in, checkout and sign-out are
+  all real `<form>`s.
+- **Carts have two backends behind one interface.** Guests use a cookie and
+  signed-in shoppers use Postgres. At sign-in the guest cart is merged in,
+  summing quantities and dropping any product that no longer exists.
+
+## REST API
+
+Human-readable docs live at **[/api](https://haul-shop.vercel.app/api)**, and a
+JSON index at [`/api/v1`](https://haul-shop.vercel.app/api/v1).
+
+```bash
+curl "https://haul-shop.vercel.app/api/v1/products?q=headphones&sort=rating&pageSize=3"
+curl  https://haul-shop.vercel.app/api/v1/products/B0DBF65JYY/reviews
+
+# Signed-in endpoints take a Supabase access token:
+curl -X POST https://haul-shop.vercel.app/api/v1/cart/items \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"asin":"B00NHQF6MG","qty":2}'
+```
+
+| Group | Endpoints |
+| --- | --- |
+| **Catalogue** (public, CDN-cached) | `GET /products`, `/products/{asin}`, `/products/{asin}/related`, `/facets`, `/categories`, `/deals`, `/recommendations`, `/suggest`, `/health` |
+| **Reviews** | `GET /products/{asin}/reviews` · `POST` (auth) · `DELETE /products/{asin}/reviews/mine` (auth) |
+| **Cart** (auth) | `GET /cart` · `POST /cart/items` · `PATCH`/`DELETE /cart/items/{asin}` |
+| **Wish list** (auth) | `GET /wishlist` · `PUT`/`DELETE /wishlist/{asin}` |
+| **Orders** (auth) | `GET /orders` · `GET /orders/{id}` · `POST /orders` |
+
+Every error uses the same shape: `{ "error": { "code", "message" } }`. The
+statuses are 400, 401, 404, 409 (`cart_empty`) and 422.
 
 ## Running it
 
 ```bash
 npm install
-cp .env.example .env.local   # add your Supabase URL + publishable key
+npx supabase start      # local Postgres + Auth; applies every migration, seed included
+cp .env.example .env.local   # paste the local API URL and publishable key it prints
 npm run dev
 ```
 
-Supabase is required: the catalogue, search, carts, orders and reviews all
-live in Postgres. For a local database, `npx supabase start` applies every
-migration (including the catalogue seed) from scratch.
+**Tests.** All three suites run against real Postgres; nothing is mocked:
 
 ```bash
-npm run build                  # production build
-node scripts/check-catalog.mjs # catalogue integrity
-node scripts/e2e.mjs           # guest cart flow (11 checks)
-node scripts/e2e-checkout.mjs  # register -> checkout -> order (11 checks)
-node scripts/shot.mjs '[{"name":"home","path":"/"}]'   # screenshot routes
+node scripts/api-e2e.mjs       # 47 REST checks: signs up two shoppers, prices, isolation, trigger
+node scripts/e2e.mjs           # guest cart in a real browser
+node scripts/e2e-checkout.mjs  # register -> checkout -> order history -> review
+node scripts/layout-check.mjs / /s /cart   # no horizontal overflow at 390px, no broken images
 ```
 
-Both e2e suites take a `BASE_URL`, so they run against production too:
+**CI** ([`ci.yml`](.github/workflows/ci.yml)) runs on every push:
 
-```bash
-BASE_URL=https://shop-amazon-clone.vercel.app node scripts/e2e.mjs
-```
+1. Checks that the seed JSON and the seed migration both regenerate
+   byte-for-byte.
+2. Fails if anything in `src` imports a fixture.
+3. Starts a throwaway Supabase, which applies every migration from scratch.
+4. Builds the app and runs all three suites against it.
 
-## CI/CD
-
-Vercel's Git integration deploys `main` to production and gives every PR a
-preview. GitHub Actions decides whether the code should get there:
-
-- **`ci.yml`** (every PR and push to `main`) — catalogue integrity, typecheck,
-  a check that `products.json` still reproduces exactly from the vendored
-  scrape, a production build **without** Supabase configured (proving the
-  storefront degrades rather than crashes), then the guest shopping flow
-  against the built app. Screenshots upload as artifacts on failure.
-- **`smoke.yml`** (after each successful production deployment) — asserts the
-  site is reachable **anonymously**, checks six key routes, and replays the
-  guest shopping flow against the live URL.
-
-That anonymous check exists because Vercel enables deployment protection on
-new projects by default, which silently 302s every visitor to a login page —
-exactly the failure a green build would otherwise hide.
-
-## What's built
-
-| Flow | Notes |
-| --- | --- |
-| **Home** | Auto-advancing hero, category cards overlapping the fade, product rails |
-| **Search** | Department / rating / price / brand / Prime / deals facets, 6 sort orders, pagination |
-| **Product** | Gallery with cursor zoom, buy box, variants, about-this-item, reviews with histogram |
-| **Cart** | Quantity, save for later, subtotal, free-shipping threshold, empty state |
-| **Auth** | Sign in, create account, guest-cart merge on sign-in |
-| **Checkout** | Single page: address, payment, review, live order summary |
-| **Orders** | Order history and detail with a delivery progress bar |
-| **Extras** | Deals, wish list, account, 404 |
-
-Every one of those works with JavaScript disabled.
-
-## Architecture
-
-**Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Supabase**
-
-**Postgres is the single source of truth.** The 268-product catalogue lives in
-`public.products`, and search scoring, facet counts, deals, recommendations and
-autocomplete are SQL functions ([`0002_catalog.sql`](supabase/migrations/0002_catalog.sql)).
-Checkout is one transactional `place_order()` call that prices every line from
-the products table. Pages and the public REST API at `/api/v1` run the same
-queries. Every table has row-level security.
-
-A few other choices:
-
-- **The whole shopping flow works without JavaScript.** Search filters are
-  plain links; Add to Cart, Buy Now, quantity, delete and save-for-later are
-  real `<form>`s posting to server actions, with the quantity select
-  auto-submitting on change when scripting is available and falling back to a
-  `<noscript>` Update button when it isn't. Turn JS off entirely and you can
-  still browse, filter, fill a cart and change quantities.
-
-  This started as a bug hunt rather than a principle: the post-deploy smoke
-  test failed against a cold deployment because a click landing between first
-  paint and React hydration was being silently dropped. The fix was to stop
-  depending on hydration at all.
-- **Search state lives entirely in the URL.** Every filter is a plain link, so
-  results are server-rendered, shareable and back-button correct. Facet counts
-  are computed per-dimension, so ticking one brand doesn't collapse the brand
-  list to that brand.
-- **Carts have two backends behind one interface.** Guests get a cookie;
-  signed-in shoppers get Postgres. `mergeGuestCart` folds one into the other
-  at sign-in, summing quantities rather than overwriting.
-- **Order line items are snapshots.** Title, image and price are copied onto
-  the order, so an order always shows what was actually bought even after the
-  catalogue changes.
-- **Plain `<img>`, not `next/image`.** The CDN already serves correctly-sized
-  renditions, and it removes a class of deploy-time image-optimisation failure
-  from a demo that has to work in front of a reviewer.
+Production is never written to by automation.
+**[`smoke.yml`](.github/workflows/smoke.yml)** runs read-only checks against
+each production deploy.
 
 ## The data
 
-`scripts/build-catalog.mjs` turns raw scraped search results into
-`src/data/products.json`. The raw scrape is vendored in `scripts/raw/`, so the
-build is reproducible from the repo alone:
+The catalogue started as a scrape of public marketplace search results. The
+raw scrape is vendored in `scripts/raw/`, and two scripts turn it into the
+seed migration:
 
 ```bash
-node scripts/build-catalog.mjs scripts/raw
+node scripts/build-catalog.mjs scripts/raw          # -> supabase/seed/products.json
+node scripts/catalog-to-sql.mjs > supabase/migrations/0003_catalog_seed.sql
 ```
 
-**Real:** titles, prices, list prices, star ratings, review counts,
-bought-in-past-month figures, badges and product images (served from Amazon's
-CDN).
-
-**Derived, deterministically per ASIN so it never changes between builds:**
-department, feature bullets, variant options and stock counts.
-
-**Honest caveats**, because a reviewer will spot them:
-
-- **39 of 268 prices are synthesised.** Amazon returns a price *range* rather
-  than a number for multi-variant listings (most shoes) and `0` for
-  Kindle/Audible editions. Where the scrape had no number, the build generates
-  a stable one inside a department-appropriate band.
-- **Review text is generated**, drawn from per-department pools and rotated so
-  no page repeats itself. The scrape doesn't include review bodies. The star
-  histogram, though, is solved against each product's **real** average, so the
-  bars and the headline number agree.
-- **One photo per product.** A search scrape only returns the primary image,
-  so the PDP hides its thumbnail column rather than showing one photo three
-  times.
+- **Real, from the source listings:** titles, prices, list prices, ratings,
+  review counts, "bought in past month" figures, badges and product images.
+  Images are served by the source CDN.
+- **Derived at seed time, stable per product:** department, feature bullets,
+  variant options and stock.
+- **Honest caveats:**
+  - **39 of 268 prices are synthesised.** The source listed a price range or
+    no price for those items. The data says which ones: `price_synthesised`.
+  - **Every product has exactly one photo.**
+  - **Variant pickers are presentational.** One listing is one product.
 
 ## Deliberately not built
 
-Scope cuts, and why:
+- **Real payments.** Checkout stores only the card's last four digits.
+  Integrating Stripe would demonstrate Stripe, not product judgement.
+- **Stock decrements.** Stock is display-only. CI and e2e runs place real
+  orders and would drain it.
+- **Seller accounts, returns, subscriptions.** Breadth that wouldn't improve
+  the core purchase loop.
+- **Dark mode.** The palette is designed around cream paper. A second theme
+  would need its own contrast pass, and it wasn't the best use of the time.
 
-- **Real payments.** Checkout takes any card number and stores only the last
-  four digits, to render the order page. Wiring Stripe would have cost hours
-  and demonstrated Stripe, not product judgement.
-- **A seller marketplace.** Multiple offers per listing, seller accounts and
-  fulfilment are most of Amazon's actual complexity and none of its first-run
-  experience.
-- **Variant catalogues.** The colour/size pickers are presentational: one ASIN
-  per listing is all the scrape gives, and inventing a variant matrix would be
-  fabrication.
-- **Returns, Prime signup, recommendations, Alexa/devices, video, grocery.**
-  Breadth that wouldn't have improved the core purchase flow.
+## How this was built with AI agents
 
-## Agent logs
+`.agent-logs/` holds every prompt and response from the Claude Code sessions,
+committed as the work happened. `scripts/capture.mjs` writes them and removes
+credentials first.
 
-`.agent-logs/` holds the prompts and responses from the coding session that
-built this, committed incrementally as the work happened. `scripts/capture.mjs`
-writes them and scrubs credentials before anything lands on disk — the logs are
-public, and a session inevitably contains tokens.
+The redesign session followed this sequence:
 
----
-
-_Not affiliated with Amazon. Product data and imagery are scraped from public
-Amazon search results for demonstration purposes._
+1. **Plan.** Parallel read-only agents mapped the frontend and the data layer,
+   and a planning agent designed the SQL. The plan was agreed before any code:
+   brand name, palette, and moving the backend first.
+2. **Backend first.** The migrations were validated on a local Supabase, then
+   parity-tested against the old JavaScript search, then pushed.
+3. **Redesign.** I built the design system, shell and home page. Four parallel
+   agents then each rebuilt one group of routes against those primitives, and
+   a mobile overflow audit caught layout bugs along the way.
+4. **Review.** A final pass over the full diff, then all e2e suites, locally
+   and in CI.
