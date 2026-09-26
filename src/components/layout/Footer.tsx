@@ -1,82 +1,88 @@
 import Link from "next/link";
 import { CATEGORIES } from "@/lib/types";
+import { Wordmark } from "./Wordmark";
 
-const COLUMNS = [
+const COLUMNS: { title: string; links: [string, string][] }[] = [
   {
-    title: "Get to Know Us",
-    links: ["Careers", "Blog", "About Amazon", "Investor Relations", "Devices"],
-  },
-  {
-    title: "Make Money with Us",
+    title: "Shop",
     links: [
-      "Sell products on Amazon",
-      "Sell on Amazon Business",
-      "Become an Affiliate",
-      "Advertise Your Products",
-      "Self-Publish with Us",
+      ["/deals", "Deals"],
+      ["/s?sort=reviews", "Best sellers"],
+      ["/s?sort=rating", "Top rated"],
+      ["/s?express=1", "HAUL Express"],
     ],
   },
   {
-    title: "Payment Products",
+    title: "You",
     links: [
-      "Business Card",
-      "Shop with Points",
-      "Reload Your Balance",
-      "Currency Converter",
+      ["/account", "Account"],
+      ["/orders", "Orders"],
+      ["/wishlist", "Wish list"],
+      ["/cart", "Cart"],
     ],
   },
   {
-    title: "Let Us Help You",
+    title: "Build",
     links: [
-      "Your Account",
-      "Your Orders",
-      "Shipping Rates & Policies",
-      "Returns & Replacements",
-      "Help",
+      ["/api", "REST API docs"],
+      ["/api/v1", "API index (JSON)"],
+      ["https://github.com/Mahad-007/haul", "Source on GitHub"],
     ],
   },
 ];
 
 export function Footer() {
   return (
-    <footer className="mt-8">
-      <Link
-        href="#top"
-        className="block bg-squid py-4 text-center text-[13px] text-white hover:bg-navy-hover"
-      >
-        Back to top
-      </Link>
+    <footer className="mt-16 border-t-[3px] border-ink bg-lime">
+      <div className="mx-auto grid w-full max-w-[1320px] gap-10 px-4 py-12 md:grid-cols-[1.2fr_2fr] md:px-6">
+        <div>
+          <Wordmark size="lg" />
+          <p className="mt-6 max-w-sm font-display text-[22px] font-bold leading-tight">
+            A loud little store for stuff worth hauling home.
+          </p>
+          <a
+            href="#top"
+            className="mt-6 inline-flex h-10 items-center rounded-brut border-[3px] border-ink bg-card px-4 font-mono text-[12px] font-bold uppercase shadow-brut press"
+          >
+            ↑ Back to top
+          </a>
+        </div>
 
-      <div className="bg-navy-light px-6 py-10 text-white">
-        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
           {COLUMNS.map((col) => (
-            <div key={col.title}>
-              <h3 className="mb-2 text-[16px] font-bold">{col.title}</h3>
-              <ul className="space-y-1.5 text-[13px] text-[#ddd]">
-                {col.links.map((l) => (
-                  <li key={l}>
-                    <span className="cursor-default hover:underline">{l}</span>
+            <nav key={col.title} aria-label={col.title}>
+              <h2 className="mb-3 font-mono text-[12px] font-bold uppercase tracking-[0.16em]">{col.title}</h2>
+              <ul className="space-y-1.5">
+                {col.links.map(([href, label]) => (
+                  <li key={href}>
+                    <Link href={href} className="text-[14px] font-semibold hover:bg-ink hover:text-lime">
+                      {label}
+                    </Link>
                   </li>
                 ))}
               </ul>
-            </div>
+            </nav>
           ))}
+          <nav aria-label="Departments">
+            <h2 className="mb-3 font-mono text-[12px] font-bold uppercase tracking-[0.16em]">Departments</h2>
+            <ul className="space-y-1.5">
+              {CATEGORIES.map((c) => (
+                <li key={c.slug}>
+                  <Link href={`/s?c=${c.slug}`} className="text-[14px] font-semibold hover:bg-ink hover:text-lime">
+                    {c.short}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
         </div>
       </div>
 
-      <div className="bg-navy px-6 py-8 text-center text-[12px] text-[#ddd]">
-        <div className="mx-auto max-w-5xl">
-          <p className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-1">
-            {CATEGORIES.map((c) => (
-              <Link key={c.slug} href={`/s?c=${c.slug}`} className="hover:underline">
-                {c.short}
-              </Link>
-            ))}
-          </p>
-          <p className="text-[#999]">
-            A portfolio rebuild of amazon.com — not affiliated with Amazon.
-            Product data and imagery are scraped from public Amazon search
-            results for demonstration purposes.
+      <div className="border-t-[3px] border-ink bg-ink text-paper">
+        <div className="mx-auto flex w-full max-w-[1320px] flex-wrap items-center justify-between gap-3 px-4 py-4 font-mono text-[11px] uppercase tracking-wider md:px-6">
+          <p>Designed and built by Mahad Khalid · 8x take-home</p>
+          <p className="text-paper/70">
+            Demo store, no real payments. Product data and images come from public marketplace listings.
           </p>
         </div>
       </div>

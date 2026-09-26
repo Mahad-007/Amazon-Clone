@@ -2,10 +2,11 @@
 
 import { useFormStatus } from "react-dom";
 import { addToCartForm } from "@/app/actions/cart";
+import { buttonStyles } from "@/components/ui/Button";
 
 /**
  * A real form posting to a server action, so the button works from the moment
- * the HTML lands — before React hydrates, and with JavaScript off entirely.
+ * the HTML lands, before React hydrates, and with JavaScript off entirely.
  * useFormStatus supplies the pending state once hydration does happen.
  */
 export function AddToCartButton({
@@ -30,15 +31,8 @@ export function AddToCartButton({
 
 function Submit({ compact, label }: { compact: boolean; label: string }) {
   const { pending } = useFormStatus();
-
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className={`w-full rounded-full bg-cta text-[13px] text-ink shadow-sm transition-colors hover:bg-cta-hover disabled:opacity-60 ${
-        compact ? "py-1.5" : "py-2 text-[14px]"
-      }`}
-    >
+    <button type="submit" disabled={pending} className={buttonStyles({ size: compact ? "sm" : "md", block: true })}>
       {pending ? "Adding…" : label}
     </button>
   );

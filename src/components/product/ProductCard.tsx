@@ -1,155 +1,73 @@
 import Link from "next/link";
 import type { Product } from "@/lib/types";
+import { TINT } from "@/lib/tint";
+import { percentOff } from "@/lib/format";
 import { PriceBlock } from "@/components/ui/Price";
 import { RatingLine } from "@/components/ui/Stars";
-import { PrimeBadge } from "@/components/ui/PrimeBadge";
-import { compactCount, deliveryDate, formatDelivery } from "@/lib/format";
+import { ExpressBadge } from "@/components/ui/ExpressBadge";
+import { Sticker } from "@/components/ui/Sticker";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 
 /**
- * Images come straight from Amazon's CDN at a rendition we pick in the build
- * script, so they are already correctly sized. We use a plain <img> rather
- * than next/image on purpose: it removes a whole class of deploy-time image
- * optimisation failure from the live demo, and buys nothing here.
+ * The product tile used in every grid and shelf.
+ *
+ * Images are served by the source CDN at a size picked in the build script,
+ * so a plain <img> is deliberate: next/image would add an optimisation step
+ * that buys nothing here and is one more thing to fail at deploy time.
  */
 export function ProductCard({
   product,
-  showDelivery = true,
   showAddToCart = false,
+  priority = false,
 }: {
   product: Product;
-  showDelivery?: boolean;
   showAddToCart?: boolean;
+  priority?: boolean;
 }) {
   const href = `/product/${product.asin}`;
+  const off = product.listPriceCents ? percentOff(product.priceCents, product.listPriceCents) : 0;
 
   return (
-    <div className="group flex h-full flex-col bg-white p-4">
-      <Link href={href} className="mb-3 block">
-        <div className="flex h-[200px] items-center justify-center">
+    <article className="group relative flex h-full flex-col border-[3px] border-ink bg-card shadow-brut lift">
+      <Link href={href} className={`relative block border-b-[3px] border-ink ${TINT[product.category]}`}>
+        <div className="flex aspect-square items-center justify-center p-5">
           <img
             src={product.image}
-            alt={product.title}
-            loading="lazy"
+            alt=""
+            loading={priority ? "eager" : "lazy"}
             decoding="async"
-            className="max-h-[200px] max-w-full object-contain transition-transform duration-200 group-hover:scale-[1.03]"
+            className="max-h-full max-w-full object-contain mix-blend-multiply transition-transform duration-200 group-hover:scale-[1.04]"
           />
         </div>
-      </Link>
-
-      {product.badge && (
-        <span className="mb-1 w-fit bg-[#cc0c39] px-1.5 py-0.5 text-[11px] font-bold text-white">
-          {product.badge}
-        </span>
-      )}
-
-      <Link href={href} className="mb-1">
-        <h3 className="clamp-2 text-[14px] leading-5 link-teal">
-          {product.title}
-        </h3>
-      </Link>
-
-      <div className="mb-1">
-        <RatingLine
-          rating={product.rating}
-          count={product.reviewCount}
-          href={`${href}#reviews`}
-        />
-      </div>
-
-      {product.boughtPastMonth != null && product.boughtPastMonth >= 50 && (
-        <p className="mb-1 text-[12px] text-[#565959]">
-          {compactCount(product.boughtPastMonth)} bought in past month
-        </p>
-      )}
-
-      <div className="mb-1">
-        <PriceBlock
-          cents={product.priceCents}
-          listCents={product.listPriceCents}
-          size="md"
-        />
-      </div>
-
-      {product.express && (
-        <div className="mb-1">
-          <PrimeBadge />
+        <div className="absolute left-2 top-2 flex flex-col items-start gap-1.5">
+          {off > 0 && <Sticker tone="pink">-{off}%</Sticker>}
+          {product.badge && (
+            <Sticker tone="sun" tilt={2}>
+              {product.badge}
+            </Sticker>
+          )}
         </div>
-      )}
+      </Link>
 
-      {showDelivery && (
-        <p className="mb-2 text-[12px] text-[#565959]">
-          FREE delivery{" "}
-          <span className="font-bold text-ink">
-            {formatDelivery(deliveryDate(product.express ? 2 : 5))}
-          </span>
-        </p>
-      )}
-
-      {/* Push the CTA to the bottom so cards in a row line up. */}
-      <div className="mt-auto pt-2">
-        {showAddToCart && <AddToCartButton asin={product.asin} compact />}
-      </div>
-    </div>
-  );
-}
-
-/** Dense variant for horizontal rails — image, price, rating only. */
-export function RailCard({ product }: { product: Product }) {
-  return (
-    <Link
-      href={`/product/${product.asin}`}
-      className="group block w-[180px] shrink-0"
-    >
-      <div className="flex h-[180px] items-center justify-center bg-white">
-        <img
-          src={product.image}
-          alt={product.title}
-          loading="lazy"
-          decoding="async"
-          className="max-h-[180px] max-w-full object-contain transition-transform duration-200 group-hover:scale-[1.04]"
-        />
-      </div>
-      <p className="clamp-2 mt-2 text-[13px] leading-[18px] link-teal">
-        {product.shortTitle}
-      </p>
-      <div className="mt-1 flex items-center gap-1">
+      <div className="flex flex-1 flex-col gap-2 p-3.5">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted">{product.brand}</p>
+        <h3 className="clamp-2 text-[15px] font-semibold leading-snug">
+          <Link href={href} className="after:absolute after:inset-0 after:content-[''] hover:underline">
+            {product.shortTitle}
+          </Link>
+        </h3>
         <RatingLine rating={product.rating} count={product.reviewCount} size={13} />
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+          <PriceBlock cents={product.priceCents} listCents={product.listPriceCents} size="md" showPercent={false} />
+          {product.express && <ExpressBadge />}
+        </div>
+        {showAddToCart && (
+          // Above the stretched title link, so the button stays clickable.
+          <div className="relative z-10 pt-1">
+            <AddToCartButton asin={product.asin} compact />
+          </div>
+        )}
       </div>
-      <div className="mt-1">
-        <PriceBlock
-          cents={product.priceCents}
-          listCents={product.listPriceCents}
-          size="sm"
-          showPercent={false}
-        />
-      </div>
-    </Link>
-  );
-}
-
-/** Image-only tile used inside the home page's category cards. */
-export function TileCard({
-  product,
-  label,
-}: {
-  product: Product;
-  label?: string;
-}) {
-  return (
-    <Link href={`/product/${product.asin}`} className="group block">
-      <div className="flex h-[110px] items-center justify-center overflow-hidden bg-white">
-        <img
-          src={product.image}
-          alt={product.title}
-          loading="lazy"
-          decoding="async"
-          className="max-h-[110px] max-w-full object-contain"
-        />
-      </div>
-      <p className="clamp-1 mt-1.5 text-[12px] text-ink">
-        {label ?? product.shortTitle}
-      </p>
-    </Link>
+    </article>
   );
 }
