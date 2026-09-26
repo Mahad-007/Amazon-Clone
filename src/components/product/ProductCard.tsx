@@ -71,7 +71,7 @@ export function ProductCard({
         />
       </div>
 
-      {product.isPrime && (
+      {product.express && (
         <div className="mb-1">
           <PrimeBadge />
         </div>
@@ -81,7 +81,7 @@ export function ProductCard({
         <p className="mb-2 text-[12px] text-[#565959]">
           FREE delivery{" "}
           <span className="font-bold text-ink">
-            {formatDelivery(deliveryDate(product.isPrime ? 2 : 5))}
+            {formatDelivery(deliveryDate(product.express ? 2 : 5))}
           </span>
         </p>
       )}

@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { listOrders } from "@/lib/orders";
 import { getUser } from "@/lib/supabase/server";
 import { formatDay, money, orderNumber } from "@/lib/format";
-import { getProducts, relatedToAny } from "@/lib/catalog";
+import { relatedToAny } from "@/lib/catalog";
 import { Rail } from "@/components/home/Rail";
 import { BuyAgainButton } from "@/components/orders/BuyAgainButton";
 
@@ -121,8 +121,8 @@ export default async function OrdersPage() {
       <div className="mt-6">
         <Rail
           title="Related to items you've ordered"
-          products={relatedToAny(
-            getProducts(orders.flatMap((o) => o.items.map((i) => i.asin))),
+          products={await relatedToAny(
+            orders.flatMap((o) => o.items.map((i) => i.asin)),
             14,
           )}
         />

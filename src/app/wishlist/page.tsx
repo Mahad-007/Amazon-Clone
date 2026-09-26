@@ -14,12 +14,12 @@ export default async function WishlistPage() {
   if (!user) redirect("/signin?next=/wishlist");
 
   const supabase = await createClient();
-  const { data } = (await supabase
-    ?.from("list_items")
+  const { data } = await supabase
+    .from("list_items")
     .select("asin")
-    .order("added_at", { ascending: false })) ?? { data: [] };
+    .order("added_at", { ascending: false });
 
-  const products = getProducts((data ?? []).map((r) => r.asin as string));
+  const products = await getProducts((data ?? []).map((r) => r.asin));
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-5">
@@ -52,7 +52,7 @@ export default async function WishlistPage() {
       <div className="mt-6">
         <Rail
           title="Related to items on your list"
-          products={relatedToAny(products, 14)}
+          products={await relatedToAny(products.map((p) => p.asin), 14)}
         />
       </div>
     </div>

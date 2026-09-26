@@ -1,88 +1,117 @@
-import raw from "@/data/products.json";
-import { CATEGORIES, type CategorySlug, type Product } from "./types";
+import "server-only";
+import { unstable_cache } from "next/cache";
+import { publicDb } from "./supabase/public";
+import type { Database } from "./supabase/database.types";
+import { CATEGORIES, type Category, type CategorySlug, type Product, type Variant } from "./types";
 
 /**
- * The catalogue is a static JSON import, so it is bundled at build time and
- * every query below runs in-process. 268 products is small enough that a
- * linear scan beats any index we could build, and it means search works
- * with no database round trip.
+ * The catalogue lives in Postgres (supabase/migrations/0002_catalog.sql).
+ * Search scoring, facets and the shelf algorithms are SQL functions, so the
+ * pages and the /api/v1 REST API run exactly the same queries.
+ *
+ * Reads go through a cookie-less anon client and the Next data cache, tagged
+ * `catalog`. Writes that change what a product shows (a new review moves its
+ * rating) invalidate that tag. The commit SHA is part of every key because
+ * the data cache outlives deploys.
  */
-const PRODUCTS = raw as Product[];
+export const CATALOG_TAG = "catalog";
+const BUILD = process.env.VERCEL_GIT_COMMIT_SHA ?? "local";
 
-const BY_ASIN = new Map(PRODUCTS.map((p) => [p.asin, p]));
-
-export function allProducts(): Product[] {
-  return PRODUCTS;
+function cached<F extends (...args: any[]) => Promise<unknown>>(name: string, fn: F): F {
+  return unstable_cache(fn, ["catalog", name, BUILD], {
+    tags: [CATALOG_TAG],
+    revalidate: 3600,
+  }) as unknown as F;
 }
 
-export function getProduct(asin: string): Product | undefined {
-  return BY_ASIN.get(asin);
+type ProductRow = Database["public"]["Tables"]["products"]["Row"];
+
+export function toProduct(row: ProductRow): Product {
+  return {
+    asin: row.asin,
+    title: row.title,
+    shortTitle: row.short_title,
+    brand: row.brand,
+    priceCents: row.price_cents,
+    listPriceCents: row.list_price_cents,
+    // Generated columns are typed nullable by the codegen; they never are.
+    rating: Number(row.rating ?? row.scraped_rating),
+    reviewCount: row.review_count ?? row.scraped_review_count,
+    haulReviewCount: row.user_review_count,
+    image: row.image,
+    images: row.images,
+    category: row.category as CategorySlug,
+    express: row.express,
+    badge: row.badge,
+    boughtPastMonth: row.bought_past_month,
+    bullets: row.bullets,
+    stock: row.stock,
+    variants: row.variants as Variant[],
+  };
 }
 
-export function getProducts(asins: string[]): Product[] {
-  return asins
-    .map((a) => BY_ASIN.get(a))
-    .filter((p): p is Product => Boolean(p));
+function unwrap<T>(result: { data: T | null; error: { message: string } | null }, what: string): T {
+  if (result.error) throw new Error(`catalog: ${what} failed: ${result.error.message}`);
+  return result.data as T;
 }
 
-export function categoryBySlug(slug: string) {
-  return CATEGORIES.find((c) => c.slug === slug);
-}
+// ------------------------------------------------------------------ lookups
 
-// ------------------------------------------------------------------ search
+export const getProduct = cached("product", async (asin: string): Promise<Product | null> => {
+  const row = unwrap(
+    await publicDb().from("products").select("*").eq("asin", asin).maybeSingle(),
+    "getProduct",
+  );
+  return row ? toProduct(row) : null;
+});
 
-/**
- * Scores a product against a query. Amazon weights a title-prefix match far
- * above a scattered token match, which is what keeps "sony headphones" from
- * surfacing a headphone stand that merely mentions Sony.
- */
-function score(product: Product, tokens: string[]): number {
-  if (tokens.length === 0) return 1;
+/** Looks up several products, keeping the input order and dropping unknowns. */
+export const getProducts = cached("products", async (asins: string[]): Promise<Product[]> => {
+  if (asins.length === 0) return [];
+  const rows = unwrap(
+    await publicDb().from("products").select("*").in("asin", asins),
+    "getProducts",
+  );
+  const byAsin = new Map(rows.map((r) => [r.asin, toProduct(r)]));
+  return asins.map((a) => byAsin.get(a)).filter((p): p is Product => Boolean(p));
+});
 
-  const title = product.title.toLowerCase();
-  const brand = product.brand.toLowerCase();
-  let total = 0;
+export const listCategories = cached(
+  "categories",
+  async (): Promise<(Category & { count: number })[]> => {
+    const rows = unwrap(
+      await publicDb()
+        .from("categories")
+        .select("slug, name, short, products(count)")
+        .order("sort_order"),
+      "listCategories",
+    );
+    return rows.map((r) => ({
+      slug: r.slug as CategorySlug,
+      name: r.name,
+      short: r.short,
+      count: (r.products as unknown as { count: number }[])[0]?.count ?? 0,
+    }));
+  },
+);
 
-  for (const token of tokens) {
-    if (brand === token) total += 14;
-    else if (brand.startsWith(token)) total += 9;
+// ------------------------------------------------------------------- search
 
-    const at = title.indexOf(token);
-    if (at === 0) total += 10;
-    else if (at > 0) {
-      // Word-boundary hits are worth more than mid-word coincidences.
-      total += /\s/.test(title[at - 1] ?? "") ? 6 : 2;
-    } else if (product.category.includes(token)) {
-      total += 3;
-    } else {
-      // A token matching nothing at all disqualifies the product: Amazon's
-      // search is an AND, not an OR.
-      return 0;
-    }
-  }
-
-  // Gentle popularity tiebreak so equally-relevant items rank sensibly.
-  return total + Math.log10(product.reviewCount + 10);
-}
-
-export type SortKey =
-  | "featured"
-  | "price-asc"
-  | "price-desc"
-  | "rating"
-  | "newest"
-  | "reviews";
+export type SortKey = "featured" | "price-asc" | "price-desc" | "rating" | "newest" | "reviews";
 
 export type SearchParams = {
   q?: string;
   category?: CategorySlug | "all";
   brands?: string[];
+  /** Cents. */
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
-  primeOnly?: boolean;
+  expressOnly?: boolean;
   dealsOnly?: boolean;
   sort?: SortKey;
+  page?: number;
+  pageSize?: number;
 };
 
 export type Facets = {
@@ -91,300 +120,164 @@ export type Facets = {
   priceBuckets: { label: string; min: number; max: number; count: number }[];
 };
 
-const PRICE_BUCKETS = [
-  { label: "Under $25", min: 0, max: 2500 },
-  { label: "$25 to $50", min: 2500, max: 5000 },
-  { label: "$50 to $100", min: 5000, max: 10000 },
-  { label: "$100 to $200", min: 10000, max: 20000 },
-  { label: "$200 & above", min: 20000, max: Number.MAX_SAFE_INTEGER },
-];
-
-/**
- * Applies every filter EXCEPT the named one. Facet counts have to ignore
- * their own dimension, otherwise selecting a brand collapses the brand list
- * to that single brand and you can never pick a second one.
- */
-function matches(
-  p: Product,
-  params: SearchParams,
-  tokens: string[],
-  except?: "brand" | "category" | "price",
-): boolean {
-  if (score(p, tokens) === 0) return false;
-
-  if (
-    except !== "category" &&
-    params.category &&
-    params.category !== "all" &&
-    p.category !== params.category
-  ) {
-    return false;
-  }
-
-  if (
-    except !== "brand" &&
-    params.brands?.length &&
-    !params.brands.includes(p.brand)
-  ) {
-    return false;
-  }
-
-  if (except !== "price") {
-    if (params.minPrice != null && p.priceCents < params.minPrice) return false;
-    if (params.maxPrice != null && p.priceCents > params.maxPrice) return false;
-  }
-
-  if (params.minRating != null && p.rating < params.minRating) return false;
-  if (params.primeOnly && !p.isPrime) return false;
-  if (params.dealsOnly && p.listPriceCents == null) return false;
-
-  return true;
-}
-
-function tokenize(q?: string): string[] {
-  return (q ?? "")
-    .toLowerCase()
-    .split(/[^a-z0-9+]+/)
-    .filter((t) => t.length > 1);
-}
-
-export function search(params: SearchParams): {
-  results: Product[];
-  facets: Facets;
+export type SearchPage = {
+  items: Product[];
   total: number;
-} {
-  const tokens = tokenize(params.q);
-  const results = PRODUCTS.filter((p) => matches(p, params, tokens));
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
 
-  const sorted = sortProducts(results, params.sort ?? "featured", tokens);
-
-  // Facet counts come from the set filtered by every OTHER dimension.
-  const forBrands = PRODUCTS.filter((p) => matches(p, params, tokens, "brand"));
-  const forCategories = PRODUCTS.filter((p) =>
-    matches(p, params, tokens, "category"),
-  );
-  const forPrice = PRODUCTS.filter((p) => matches(p, params, tokens, "price"));
-
-  const brandCounts = new Map<string, number>();
-  for (const p of forBrands) {
-    brandCounts.set(p.brand, (brandCounts.get(p.brand) ?? 0) + 1);
-  }
-
-  const categoryCounts = new Map<CategorySlug, number>();
-  for (const p of forCategories) {
-    categoryCounts.set(p.category, (categoryCounts.get(p.category) ?? 0) + 1);
-  }
-
+/** Maps the app's params onto the SQL functions' named arguments. */
+function filterArgs(p: SearchParams) {
+  const int = (n: number | undefined) =>
+    n == null || !Number.isFinite(n) ? undefined : Math.trunc(n);
   return {
-    results: sorted,
-    total: sorted.length,
-    facets: {
-      brands: [...brandCounts.entries()]
-        .map(([value, count]) => ({ value, count }))
-        .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
-        .slice(0, 12),
-      categories: CATEGORIES.filter((c) => categoryCounts.has(c.slug)).map(
-        (c) => ({
-          slug: c.slug,
-          name: c.name,
-          count: categoryCounts.get(c.slug) ?? 0,
-        }),
-      ),
-      priceBuckets: PRICE_BUCKETS.map((b) => ({
-        ...b,
-        count: forPrice.filter(
-          (p) => p.priceCents >= b.min && p.priceCents < b.max,
-        ).length,
-      })).filter((b) => b.count > 0),
-    },
+    q: p.q?.trim() || undefined,
+    cat: p.category && p.category !== "all" ? p.category : undefined,
+    brands: p.brands?.length ? p.brands : undefined,
+    min_price: int(p.minPrice),
+    max_price: int(p.maxPrice),
+    min_rating: p.minRating ?? undefined,
+    express_only: Boolean(p.expressOnly),
+    deals_only: Boolean(p.dealsOnly),
   };
 }
 
-function sortProducts(
-  list: Product[],
-  sort: SortKey,
-  tokens: string[],
-): Product[] {
-  const copy = [...list];
-  switch (sort) {
-    case "price-asc":
-      return copy.sort((a, b) => a.priceCents - b.priceCents);
-    case "price-desc":
-      return copy.sort((a, b) => b.priceCents - a.priceCents);
-    case "rating":
-      return copy.sort(
-        (a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount,
-      );
-    case "reviews":
-      return copy.sort((a, b) => b.reviewCount - a.reviewCount);
-    case "newest":
-      // No real publish date in the data; ASIN ordering is a stable stand-in.
-      return copy.sort((a, b) => b.asin.localeCompare(a.asin));
-    default:
-      return copy.sort(
-        (a, b) => score(b, tokens) - score(a, tokens) || b.reviewCount - a.reviewCount,
-      );
-  }
+export const searchProducts = cached("search", async (p: SearchParams): Promise<SearchPage> => {
+  const data = unwrap(
+    await publicDb().rpc("search_products", {
+      ...filterArgs(p),
+      sort: p.sort ?? "featured",
+      page: p.page ?? 1,
+      page_size: p.pageSize ?? 16,
+    }),
+    "search_products",
+  ) as unknown as Omit<SearchPage, "items"> & { items: ProductRow[] };
+  return { ...data, items: data.items.map(toProduct) };
+});
+
+export const searchFacets = cached("facets", async (p: SearchParams): Promise<Facets> => {
+  return unwrap(
+    await publicDb().rpc("search_facets", filterArgs(p)),
+    "search_facets",
+  ) as unknown as Facets;
+});
+
+export async function search(p: SearchParams): Promise<SearchPage & { facets: Facets }> {
+  const [page, facets] = await Promise.all([searchProducts(p), searchFacets(p)]);
+  return { ...page, facets };
 }
 
-// ----------------------------------------------------------------- shelves
+// ------------------------------------------------------------------ shelves
 
-export function byCategory(slug: CategorySlug, limit = 20): Product[] {
-  return PRODUCTS.filter((p) => p.category === slug).slice(0, limit);
-}
+export const byCategory = cached(
+  "byCategory",
+  async (slug: CategorySlug, limit = 20): Promise<Product[]> => {
+    const rows = unwrap(
+      await publicDb()
+        .from("products")
+        .select("*")
+        .eq("category", slug)
+        .order("review_count", { ascending: false })
+        .order("asin")
+        .limit(limit),
+      "byCategory",
+    );
+    return rows.map(toProduct);
+  },
+);
 
-export function bestSellers(limit = 20): Product[] {
-  return [...PRODUCTS]
-    .sort((a, b) => b.reviewCount - a.reviewCount)
-    .slice(0, limit);
-}
-
-export function topRated(limit = 20): Product[] {
-  return [...PRODUCTS]
-    .filter((p) => p.reviewCount > 500)
-    .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount)
-    .slice(0, limit);
-}
-
-/**
- * Anything with a struck-through list price is a "deal".
- *
- * Sorting purely by discount is the obvious implementation and the wrong
- * one: a handful of categories carry listings with wildly inflated list
- * prices, so the whole first screen came back as budget earbuds. Instead we
- * rank within each department and then round-robin across them, so the grid
- * opens on the best deal in electronics, then books, then tools, and so on.
- */
-export function deals(limit = 40): Product[] {
-  const discount = (p: Product) =>
-    1 - p.priceCents / (p.listPriceCents ?? p.priceCents);
-
-  const byCategory = new Map<CategorySlug, Product[]>();
-  for (const p of PRODUCTS) {
-    if (p.listPriceCents == null) continue;
-    const list = byCategory.get(p.category) ?? [];
-    list.push(p);
-    byCategory.set(p.category, list);
-  }
-
-  // Best deal first within each department...
-  for (const list of byCategory.values()) {
-    list.sort((a, b) => discount(b) - discount(a));
-  }
-
-  // ...then departments ordered by how good their best deal is, so the grid
-  // still opens strong rather than alphabetically.
-  const lanes = [...byCategory.values()].sort(
-    (a, b) => discount(b[0]) - discount(a[0]),
+export const bestSellers = cached("bestSellers", async (limit = 20): Promise<Product[]> => {
+  const rows = unwrap(
+    await publicDb()
+      .from("products")
+      .select("*")
+      .order("review_count", { ascending: false })
+      .order("asin")
+      .limit(limit),
+    "bestSellers",
   );
+  return rows.map(toProduct);
+});
 
-  const out: Product[] = [];
-  for (let round = 0; out.length < limit; round++) {
-    let addedThisRound = false;
-    for (const lane of lanes) {
-      if (round >= lane.length) continue;
-      out.push(lane[round]);
-      addedThisRound = true;
-      if (out.length >= limit) break;
-    }
-    if (!addedThisRound) break; // every lane exhausted
-  }
+/** Highest rated among products with enough reviews for the rating to mean something. */
+export const topRated = cached("topRated", async (limit = 20): Promise<Product[]> => {
+  const rows = unwrap(
+    await publicDb()
+      .from("products")
+      .select("*")
+      .gt("review_count", 500)
+      .order("rating", { ascending: false })
+      .order("review_count", { ascending: false })
+      .limit(limit),
+    "topRated",
+  );
+  return rows.map(toProduct);
+});
 
-  return out;
-}
+/** Products under a price ceiling (cents), most popular first. */
+export const under = cached("under", async (maxCents: number, limit = 12): Promise<Product[]> => {
+  const rows = unwrap(
+    await publicDb()
+      .from("products")
+      .select("*")
+      .lt("price_cents", maxCents)
+      .order("review_count", { ascending: false })
+      .limit(limit),
+    "under",
+  );
+  return rows.map(toProduct);
+});
+
+/** Discounted products, round-robin across departments (see SQL `deals`). */
+export const deals = cached("deals", async (limit = 40): Promise<Product[]> => {
+  const rows = unwrap(await publicDb().rpc("deals", { lim: limit }), "deals");
+  return rows.map(toProduct);
+});
 
 /** Same department, excluding the product itself, most-reviewed first. */
-export function related(product: Product, limit = 12): Product[] {
-  return PRODUCTS.filter(
-    (p) => p.category === product.category && p.asin !== product.asin,
-  )
-    .sort((a, b) => b.reviewCount - a.reviewCount)
-    .slice(0, limit);
-}
+export const related = cached(
+  "related",
+  async (asin: string, category: CategorySlug, limit = 12): Promise<Product[]> => {
+    const rows = unwrap(
+      await publicDb()
+        .from("products")
+        .select("*")
+        .eq("category", category)
+        .neq("asin", asin)
+        .order("review_count", { ascending: false })
+        .limit(limit),
+      "related",
+    );
+    return rows.map(toProduct);
+  },
+);
+
+/** Same department, nearest in price. */
+export const alsoViewed = cached("alsoViewed", async (asin: string, limit = 6): Promise<Product[]> => {
+  const rows = unwrap(await publicDb().rpc("also_viewed", { target: asin, lim: limit }), "also_viewed");
+  return rows.map(toProduct);
+});
 
 /**
- * Recommendations for a basket or an order: products from the same
- * departments as the given items, excluding the items themselves, drawn
- * round-robin so a two-department cart gets both represented.
- *
- * Without this the cart and orders rails showed the global best sellers, so
- * "Customers who bought items in your cart also bought" sat next to a LEGO
- * set recommending novels.
+ * Recommendations for a cart, order or list: the seeds' departments,
+ * round-robin, topped up with best sellers (see SQL `related_to_any`).
  */
-export function relatedToAny(seeds: Product[], limit = 14): Product[] {
-  if (seeds.length === 0) return bestSellers(limit);
+export const relatedToAny = cached(
+  "relatedToAny",
+  async (seedAsins: string[], limit = 14): Promise<Product[]> => {
+    const rows = unwrap(
+      await publicDb().rpc("related_to_any", { seeds: seedAsins, lim: limit }),
+      "related_to_any",
+    );
+    return rows.map(toProduct);
+  },
+);
 
-  const exclude = new Set(seeds.map((p) => p.asin));
-  const categories = [...new Set(seeds.map((p) => p.category))];
-
-  const lanes = categories.map((c) =>
-    PRODUCTS.filter((p) => p.category === c && !exclude.has(p.asin)).sort(
-      (a, b) => b.reviewCount - a.reviewCount,
-    ),
-  );
-
-  const out: Product[] = [];
-  for (let round = 0; out.length < limit; round++) {
-    let added = false;
-    for (const lane of lanes) {
-      if (round >= lane.length) continue;
-      out.push(lane[round]);
-      added = true;
-      if (out.length >= limit) break;
-    }
-    if (!added) break;
-  }
-
-  // A single-item cart in a thin department still deserves a full shelf.
-  if (out.length < limit) {
-    for (const p of bestSellers(limit * 2)) {
-      if (out.length >= limit) break;
-      if (!exclude.has(p.asin) && !out.some((x) => x.asin === p.asin)) out.push(p);
-    }
-  }
-
-  return out;
-}
-
-/** Cheaper items in the same department — Amazon's "compare with similar". */
-export function alsoViewed(product: Product, limit = 6): Product[] {
-  return PRODUCTS.filter(
-    (p) => p.category === product.category && p.asin !== product.asin,
-  )
-    .sort(
-      (a, b) =>
-        Math.abs(a.priceCents - product.priceCents) -
-        Math.abs(b.priceCents - product.priceCents),
-    )
-    .slice(0, limit);
-}
-
-// -------------------------------------------------------------- suggestions
-
-/** Search-box autocomplete: brand names and title prefixes that match. */
-export function suggestions(q: string, limit = 8): string[] {
-  const query = q.trim().toLowerCase();
-  if (query.length < 1) return [];
-
-  const out = new Set<string>();
-
-  for (const p of PRODUCTS) {
-    if (out.size >= limit * 3) break;
-    const brand = p.brand.toLowerCase();
-    if (brand.startsWith(query)) out.add(p.brand.toLowerCase());
-  }
-
-  for (const p of PRODUCTS) {
-    const title = p.shortTitle.toLowerCase();
-    if (title.includes(query)) {
-      // Trim to a search-phrase-length fragment rather than a whole title.
-      const words = title.split(/\s+/).slice(0, 5).join(" ");
-      out.add(words);
-    }
-    if (out.size >= limit * 3) break;
-  }
-
-  return [...out].slice(0, limit);
-}
+export const suggestions = cached("suggestions", async (q: string, limit = 8): Promise<string[]> => {
+  if (!q.trim()) return [];
+  return unwrap(await publicDb().rpc("suggestions", { q, lim: limit }), "suggestions") ?? [];
+});
 
 export { CATEGORIES };

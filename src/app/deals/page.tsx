@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   description: "Discounted products across every department.",
 };
 
-export default function DealsPage() {
-  const all = deals(60);
+export default async function DealsPage() {
+  const all = await deals(60);
   const best = all[0];
   const deepest = percentOff(best.priceCents, best.listPriceCents ?? best.priceCents);
 

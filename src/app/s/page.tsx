@@ -35,12 +35,14 @@ export default async function SearchPage({
 }) {
   const raw = await searchParams;
   const params = parseParams(raw);
-  const { results, facets, total } = search(params);
-
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const page = Math.min(params.page, pageCount);
+  const {
+    items: pageItems,
+    facets,
+    total,
+    page,
+    pageCount,
+  } = await search({ ...params, pageSize: PAGE_SIZE });
   const start = (page - 1) * PAGE_SIZE;
-  const pageItems = results.slice(start, start + PAGE_SIZE);
 
   // Drives the count badge on the mobile "Filters" toggle.
   const activeFilterCount =
@@ -48,7 +50,7 @@ export default async function SearchPage({
     (params.brands?.length ?? 0) +
     (params.minPrice != null || params.maxPrice != null ? 1 : 0) +
     (params.minRating != null ? 1 : 0) +
-    (params.primeOnly ? 1 : 0) +
+    (params.expressOnly ? 1 : 0) +
     (params.dealsOnly ? 1 : 0);
 
   const categoryName =
@@ -69,7 +71,7 @@ export default async function SearchPage({
               minPrice: params.minPrice,
               maxPrice: params.maxPrice,
               minRating: params.minRating,
-              primeOnly: params.primeOnly,
+              primeOnly: params.expressOnly,
               dealsOnly: params.dealsOnly,
             }}
           />

@@ -17,8 +17,8 @@ import { deliveryDate, formatDelivery } from "@/lib/format";
  * which is the behaviour the amber button implies.
  */
 export function BuyBox({ product }: { product: Product }) {
-  const fast = deliveryDate(product.isPrime ? 2 : 5);
-  const free = deliveryDate(product.isPrime ? 4 : 8);
+  const fast = deliveryDate(product.express ? 2 : 5);
+  const free = deliveryDate(product.express ? 4 : 8);
   const inStock = product.stock > 0;
 
   return (

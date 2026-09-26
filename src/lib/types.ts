@@ -9,15 +9,19 @@ export type Product = {
   priceCents: number;
   /** Pre-discount price, when the item is on sale. */
   listPriceCents: number | null;
+  /** Scraped marketplace rating blended with real HAUL reviews (in SQL). */
   rating: number;
   reviewCount: number;
+  /** How many of reviewCount were written on HAUL. */
+  haulReviewCount: number;
   image: string;
   /** Extra gallery shots, derived from the primary image. */
   images: string[];
   category: CategorySlug;
-  isPrime: boolean;
+  /** Ships with HAUL Express (2-day). */
+  express: boolean;
   badge: string | null;
-  /** e.g. "2K+ bought in past month" — Amazon's social-proof line. */
+  /** e.g. "2K+ bought in past month" — social proof from the source listing. */
   boughtPastMonth: number | null;
   bullets: string[];
   /** Deterministic stock figure so "Only N left" is stable across renders. */
@@ -114,3 +118,6 @@ export type Review = {
   /** True when written by the signed-in viewer. */
   mine?: boolean;
 };
+
+/** Star distribution of real reviews, 5 stars first; pct sums to 100. */
+export type Histogram = { stars: number; count: number; pct: number }[];

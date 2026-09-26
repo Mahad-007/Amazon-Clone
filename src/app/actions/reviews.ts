@@ -1,6 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { CATALOG_TAG, getProduct } from "@/lib/catalog";
+import { cleanReview, upsertReview } from "@/lib/reviews";
 import { createClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -12,47 +14,25 @@ export async function submitReview(input: {
   body: string;
 }): Promise<Result> {
   const supabase = await createClient();
-  if (!supabase) {
-    return { ok: false, error: "Reviews are unavailable right now." };
-  }
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return { ok: false, error: "Please sign in to review." };
 
-  const rating = Math.round(input.rating);
-  if (rating < 1 || rating > 5) {
-    return { ok: false, error: "Pick a rating between 1 and 5 stars." };
+  if (!(await getProduct(input.asin))) return { ok: false, error: "That product doesn't exist." };
+
+  const review = cleanReview(input);
+  if (!review.ok) return review;
+
+  try {
+    await upsertReview(supabase, user, input.asin, review.value);
+  } catch {
+    return { ok: false, error: "Could not save your review." };
   }
 
-  const title = input.title.trim().slice(0, 120);
-  const body = input.body.trim().slice(0, 2000);
-  if (body.length < 4) {
-    return { ok: false, error: "Please write a little more." };
-  }
-
-  const name =
-    (user.user_metadata?.name as string | undefined)?.trim() ||
-    user.email?.split("@")[0] ||
-    "Amazon Customer";
-
-  // One review per customer per product; writing again updates the old one.
-  const { error } = await supabase.from("reviews").upsert(
-    {
-      user_id: user.id,
-      asin: input.asin,
-      rating,
-      title: title || "Review",
-      body,
-      author_name: name,
-    },
-    { onConflict: "user_id,asin" },
-  );
-
-  if (error) return { ok: false, error: "Could not save your review." };
-
+  // The review moved the product's blended rating, which every cached shelf
+  // and search result shows, so expire the whole catalogue tag.
+  updateTag(CATALOG_TAG);
   revalidatePath(`/product/${input.asin}`);
   return { ok: true };
 }

@@ -14,7 +14,7 @@ import { compactCount, deliveryDate, formatDelivery } from "@/lib/format";
  */
 export function SearchResultCard({ product }: { product: Product }) {
   const href = `/product/${product.asin}`;
-  const arrives = deliveryDate(product.isPrime ? 2 : 5);
+  const arrives = deliveryDate(product.express ? 2 : 5);
 
   return (
     <article className="flex flex-col gap-4 border-b border-line bg-white p-4 last:border-b-0 sm:flex-row">
@@ -74,7 +74,7 @@ export function SearchResultCard({ product }: { product: Product }) {
           />
         </div>
 
-        {product.isPrime && (
+        {product.express && (
           <div className="mt-1">
             <PrimeBadge />
           </div>

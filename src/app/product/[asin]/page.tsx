@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { allProducts, getProduct, related, alsoViewed } from "@/lib/catalog";
-import { generatedReviews } from "@/lib/reviews";
-import { createClient } from "@/lib/supabase/server";
-import { CATEGORIES, type Review } from "@/lib/types";
+import { getProduct, related, alsoViewed } from "@/lib/catalog";
+import { listReviews, publicReview, reviewHistogram } from "@/lib/reviews";
+import { getUser } from "@/lib/supabase/server";
+import { CATEGORIES } from "@/lib/types";
 import { Gallery } from "@/components/product/Gallery";
 import { VariantPicker } from "@/components/product/VariantPicker";
 import { BuyBox } from "@/components/product/BuyBox";
@@ -16,18 +16,13 @@ import { PrimeBadge } from "@/components/ui/PrimeBadge";
 import { compactCount } from "@/lib/format";
 import { WishlistButton } from "@/components/product/WishlistButton";
 
-/** Prerender every product page at build time — the catalogue is static. */
-export function generateStaticParams() {
-  return allProducts().map((p) => ({ asin: p.asin }));
-}
-
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ asin: string }>;
 }): Promise<Metadata> {
   const { asin } = await params;
-  const product = getProduct(asin);
+  const product = await getProduct(asin);
   if (!product) return { title: "Product not found" };
 
   return {
@@ -46,38 +41,24 @@ export default async function ProductPage({
   params: Promise<{ asin: string }>;
 }) {
   const { asin } = await params;
-  const product = getProduct(asin);
+  const product = await getProduct(asin);
   if (!product) notFound();
 
   const category = CATEGORIES.find((c) => c.slug === product.category);
 
-  // Real reviews (Postgres) come first, then the generated ones fill the page.
-  const supabase = await createClient();
-  const user = supabase ? (await supabase.auth.getUser()).data.user : null;
+  const [user, stored, histogram, relatedItems, similar] = await Promise.all([
+    getUser(),
+    listReviews(asin, 20, 0),
+    reviewHistogram(asin),
+    related(asin, product.category, 14),
+    alsoViewed(asin, 12),
+  ]);
 
-  let realReviews: Review[] = [];
-  if (supabase) {
-    const { data } = await supabase
-      .from("reviews")
-      .select("id, asin, rating, title, body, author_name, created_at, user_id")
-      .eq("asin", asin)
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    realReviews = (data ?? []).map((r) => ({
-      id: r.id as string,
-      asin: r.asin as string,
-      rating: r.rating as number,
-      title: r.title as string,
-      body: r.body as string,
-      authorName: r.author_name as string,
-      createdAt: r.created_at as string,
-      mine: user ? r.user_id === user.id : false,
-    }));
-  }
-
-  const reviews = [...realReviews, ...generatedReviews(product, 6)].slice(0, 12);
-  const alreadyReviewed = realReviews.some((r) => r.mine);
+  const reviews = stored.items.map((r) => ({
+    ...publicReview(r),
+    mine: user ? r.userId === user.id : false,
+  }));
+  const alreadyReviewed = reviews.some((r) => r.mine);
 
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-3">
@@ -140,7 +121,7 @@ export default async function ProductPage({
                 listCents={product.listPriceCents}
                 size="xl"
               />
-              {product.isPrime && (
+              {product.express && (
                 <div className="mt-1">
                   <PrimeBadge />
                 </div>
@@ -199,16 +180,18 @@ export default async function ProductPage({
       <div className="mt-4 space-y-4">
         <Rail
           title="Products related to this item"
-          products={related(product, 14)}
+          products={relatedItems}
         />
         <Rail
           title="Customers also viewed"
-          products={alsoViewed(product, 12)}
+          products={similar}
         />
 
         <Reviews
           product={product}
           reviews={reviews}
+          histogram={histogram}
+          total={stored.total}
           canReview={!alreadyReviewed}
           signedIn={Boolean(user)}
         />

@@ -1,21 +1,24 @@
 import { Stars } from "@/components/ui/Stars";
-import { histogram, helpfulCount } from "@/lib/reviews";
 import { formatDay, reviewCount as fmtCount } from "@/lib/format";
-import type { Product, Review } from "@/lib/types";
+import type { Histogram, Product, Review } from "@/lib/types";
 import { ReviewForm } from "./ReviewForm";
 
 export function Reviews({
   product,
   reviews,
+  histogram,
+  total,
   canReview,
   signedIn,
 }: {
   product: Product;
   reviews: Review[];
+  /** Distribution of real HAUL reviews only. */
+  histogram: Histogram;
+  total: number;
   canReview: boolean;
   signedIn: boolean;
 }) {
-  const dist = histogram(product.rating, product.reviewCount);
 
   return (
     <section id="reviews" className="scroll-mt-24 bg-white px-5 py-6">
@@ -39,7 +42,7 @@ export function Reviews({
           <table className="w-full">
             <caption className="sr-only">Rating breakdown</caption>
             <tbody>
-              {dist.map((row) => (
+              {histogram.map((row) => (
                 <tr key={row.stars}>
                   <th scope="row" className="py-0.5 pr-2 text-left text-[14px] font-normal link-teal">
                     {row.stars} star
@@ -48,12 +51,12 @@ export function Reviews({
                     <span className="block h-[22px] overflow-hidden rounded-sm border border-[#d5d9d9] bg-[#f0f2f2]">
                       <span
                         className="block h-full bg-[#ffa41c]"
-                        style={{ width: `${row.percent}%` }}
+                        style={{ width: `${row.pct}%` }}
                       />
                     </span>
                   </td>
                   <td className="py-0.5 pl-2 text-right text-[14px] link-teal">
-                    {row.percent}%
+                    {row.pct}%
                   </td>
                 </tr>
               ))}
@@ -81,6 +84,11 @@ export function Reviews({
             Top reviews from the United States
           </h3>
 
+          {reviews.length === 0 && (
+            <p className="text-[14px] text-[#565959]">
+              No reviews written here yet ({total}). Be the first to review.
+            </p>
+          )}
           <ul className="space-y-6">
             {reviews.map((r) => (
               <li key={r.id}>
@@ -110,15 +118,7 @@ export function Reviews({
                   Reviewed in the United States on {formatDay(r.createdAt)}
                 </p>
 
-                <p className="mb-1.5 text-[13px] font-bold text-[#c45500]">
-                  Verified Purchase
-                </p>
-
                 <p className="text-[14px] leading-[21px] text-ink">{r.body}</p>
-
-                <p className="mt-2 text-[13px] text-[#565959]">
-                  {helpfulCount(r.id)} people found this helpful
-                </p>
               </li>
             ))}
           </ul>

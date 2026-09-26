@@ -1,5 +1,5 @@
 import "server-only";
-import { createClient } from "./supabase/server";
+import { createClient, type Db } from "./supabase/server";
 import type { Order } from "./types";
 
 type Row = Record<string, unknown>;
@@ -26,10 +26,12 @@ function toOrder(row: Row, items: Row[]): Order {
   };
 }
 
-/** RLS scopes these to the signed-in user; no explicit user filter needed. */
-export async function listOrders(): Promise<Order[]> {
-  const supabase = await createClient();
-  if (!supabase) return [];
+/**
+ * RLS scopes these to the signed-in user; no explicit user filter needed.
+ * Pages use the cookie session; the REST API passes a bearer-token client.
+ */
+export async function listOrders(db?: Db): Promise<Order[]> {
+  const supabase = db ?? (await createClient());
 
   const { data: orders } = await supabase
     .from("orders")
@@ -57,9 +59,10 @@ export async function listOrders(): Promise<Order[]> {
   return orders.map((o) => toOrder(o, byOrder.get(o.id as string) ?? []));
 }
 
-export async function getOrder(id: string): Promise<Order | null> {
-  const supabase = await createClient();
-  if (!supabase) return null;
+export async function getOrder(id: string, db?: Db): Promise<Order | null> {
+  // Not a uuid means not an order; don't let Postgres raise a cast error.
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const supabase = db ?? (await createClient());
 
   const { data: order } = await supabase
     .from("orders")

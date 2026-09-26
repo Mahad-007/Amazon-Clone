@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { readCart } from "@/lib/cart";
-import { getProduct } from "@/lib/catalog";
+import { getProducts } from "@/lib/catalog";
 import { getUser } from "@/lib/supabase/server";
 import { CheckoutForm } from "@/components/checkout/CheckoutForm";
 
@@ -15,8 +15,11 @@ export default async function CheckoutPage() {
   const lines = (await readCart()).filter((l) => !l.saved);
   if (lines.length === 0) redirect("/cart");
 
+  const products = new Map(
+    (await getProducts(lines.map((l) => l.asin))).map((p) => [p.asin, p]),
+  );
   const items = lines
-    .map((l) => ({ line: l, product: getProduct(l.asin) }))
+    .map((l) => ({ line: l, product: products.get(l.asin) }))
     .filter((x) => x.product)
     .map((x) => ({
       asin: x.product!.asin,
@@ -24,7 +27,7 @@ export default async function CheckoutPage() {
       image: x.product!.image,
       priceCents: x.product!.priceCents,
       qty: x.line.qty,
-      isPrime: x.product!.isPrime,
+      express: x.product!.express,
     }));
 
   const defaultName =

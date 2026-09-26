@@ -12,7 +12,7 @@ type Item = {
   image: string;
   priceCents: number;
   qty: number;
-  isPrime: boolean;
+  express: boolean;
 };
 
 /**
@@ -32,7 +32,7 @@ export function CheckoutForm({
   const subtotal = items.reduce((n, i) => n + i.priceCents * i.qty, 0);
   const { shipping, tax, total } = quote(subtotal);
   const count = items.reduce((n, i) => n + i.qty, 0);
-  const arrives = deliveryDate(items.every((i) => i.isPrime) ? 2 : 5);
+  const arrives = deliveryDate(items.every((i) => i.express) ? 2 : 5);
 
   return (
     <form action={action}>

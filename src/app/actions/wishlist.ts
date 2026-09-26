@@ -1,17 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getProduct } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/server";
 
 /** Returns the new state: true if the item is now on the list. */
 export async function toggleWishlist(asin: string): Promise<boolean> {
   const supabase = await createClient();
-  if (!supabase) return false;
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user || !(await getProduct(asin))) return false;
 
   const { data: existing } = await supabase
     .from("list_items")

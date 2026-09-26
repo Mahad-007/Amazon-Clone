@@ -43,7 +43,8 @@ export function parseParams(raw: RawParams): SearchParams & { page: number } {
     minPrice: num("min"),
     maxPrice: num("max"),
     minRating: num("rating"),
-    primeOnly: one(raw.prime) === "1",
+    // `prime=1` is accepted so links shared before the rename keep working.
+    expressOnly: one(raw.express) === "1" || one(raw.prime) === "1",
     dealsOnly: one(raw.deals) === "1",
     sort: sort && SORTS.includes(sort) ? sort : "featured",
     page: Math.max(1, num("page") ?? 1),

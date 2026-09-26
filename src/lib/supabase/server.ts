@@ -1,17 +1,21 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { SUPABASE_KEY, SUPABASE_URL, supabaseConfigured } from "./config";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { SUPABASE_KEY, SUPABASE_URL, assertConfigured } from "./config";
+import type { Database } from "./database.types";
+
+export type Db = SupabaseClient<Database>;
 
 /**
  * Server-side Supabase bound to the request's cookie jar, so RLS sees the
- * signed-in user. Returns null when Supabase isn't configured — every caller
- * must handle that and fall back to guest behaviour.
+ * signed-in user. Use this for anything per-user; public catalogue reads go
+ * through the cookie-less client in ./public so they can be cached.
  */
-export async function createClient() {
-  if (!supabaseConfigured) return null;
+export async function createClient(): Promise<Db> {
+  assertConfigured();
   const cookieStore = await cookies();
 
-  return createServerClient(SUPABASE_URL, SUPABASE_KEY, {
+  return createServerClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -23,17 +27,16 @@ export async function createClient() {
           }
         } catch {
           // Called from a Server Component, where cookies are read-only.
-          // Session refresh happens in middleware instead.
+          // Session refresh happens in the proxy instead.
         }
       },
     },
   });
 }
 
-/** The signed-in user, or null. Never throws. */
-export async function getUser() {
+/** The signed-in user, or null. Never throws on a missing session. */
+export async function getUser(): Promise<User | null> {
   const supabase = await createClient();
-  if (!supabase) return null;
   const {
     data: { user },
   } = await supabase.auth.getUser();

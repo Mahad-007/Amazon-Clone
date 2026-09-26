@@ -7,17 +7,17 @@ import { bestSellers, byCategory, deals, topRated } from "@/lib/catalog";
  * The catalogue is a static import, so this whole page prerenders at build
  * time. Nothing here touches the database.
  */
-export default function HomePage() {
-  const electronics = byCategory("electronics", 8);
-  const computers = byCategory("computers", 8);
-  const kitchen = byCategory("home-kitchen", 8);
-  const fashion = byCategory("fashion", 8);
-  const beauty = byCategory("beauty", 8);
-  const toys = byCategory("toys", 8);
-  const pets = byCategory("pets", 8);
-  const books = byCategory("books", 8);
-  const sports = byCategory("sports", 8);
-  const tools = byCategory("tools", 8);
+export default async function HomePage() {
+  const electronics = await byCategory("electronics", 8);
+  const computers = await byCategory("computers", 8);
+  const kitchen = await byCategory("home-kitchen", 8);
+  const fashion = await byCategory("fashion", 8);
+  const beauty = await byCategory("beauty", 8);
+  const toys = await byCategory("toys", 8);
+  const pets = await byCategory("pets", 8);
+  const books = await byCategory("books", 8);
+  const sports = await byCategory("sports", 8);
+  const tools = await byCategory("tools", 8);
 
   return (
     <>
@@ -61,7 +61,7 @@ export default function HomePage() {
             <FeatureCard
               title="Deals you'll actually use"
               href="/deals"
-              product={deals(1)[0] ?? electronics[0]}
+              product={(await deals(1))[0] ?? electronics[0]}
               linkLabel="See all deals"
             />
           </div>
@@ -71,7 +71,7 @@ export default function HomePage() {
       <div className="mx-auto max-w-[1500px] space-y-5 px-4 py-5 md:px-6">
         <Rail
           title="Best Sellers"
-          products={bestSellers(18)}
+          products={await bestSellers(18)}
           href="/s?sort=reviews"
         />
 
@@ -104,7 +104,7 @@ export default function HomePage() {
 
         <Rail
           title="Today's Deals"
-          products={deals(18)}
+          products={await deals(18)}
           href="/deals"
         />
 
@@ -130,14 +130,14 @@ export default function HomePage() {
           <FeatureCard
             title="Top rated across the store"
             href="/s?sort=rating"
-            product={topRated(1)[0] ?? electronics[0]}
+            product={(await topRated(1))[0] ?? electronics[0]}
             linkLabel="See top rated"
           />
         </div>
 
         <Rail
           title="Highly rated"
-          products={topRated(18)}
+          products={await topRated(18)}
           href="/s?sort=rating"
         />
       </div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { readCart } from "@/lib/cart";
-import { getProduct, bestSellers, relatedToAny } from "@/lib/catalog";
+import { getProducts, bestSellers, relatedToAny } from "@/lib/catalog";
 import { money } from "@/lib/format";
 import { FREE_SHIPPING_THRESHOLD } from "@/lib/pricing";
 import { Price } from "@/components/ui/Price";
@@ -17,15 +17,18 @@ export const dynamic = "force-dynamic";
 
 export default async function CartPage() {
   const lines = await readCart();
+  const products = new Map(
+    (await getProducts(lines.map((l) => l.asin))).map((p) => [p.asin, p]),
+  );
 
   const active = lines
     .filter((l) => !l.saved)
-    .map((l) => ({ line: l, product: getProduct(l.asin) }))
+    .map((l) => ({ line: l, product: products.get(l.asin) }))
     .filter((x) => x.product);
 
   const saved = lines
     .filter((l) => l.saved)
-    .map((l) => ({ line: l, product: getProduct(l.asin) }))
+    .map((l) => ({ line: l, product: products.get(l.asin) }))
     .filter((x) => x.product);
 
   const itemCount = active.reduce((n, x) => n + x.line.qty, 0);
@@ -91,7 +94,7 @@ export default async function CartPage() {
 
                       <p className="mt-1 text-[12px] text-success">In Stock</p>
 
-                      {product!.isPrime && (
+                      {product!.express && (
                         <div className="mt-0.5">
                           <PrimeBadge />
                         </div>
@@ -199,8 +202,8 @@ export default async function CartPage() {
       <div className="mt-4">
         <Rail
           title="Customers who bought items in your cart also bought"
-          products={relatedToAny(
-            [...active, ...saved].map((x) => x.product!),
+          products={await relatedToAny(
+            [...active, ...saved].map((x) => x.line.asin),
             14,
           )}
         />
@@ -209,7 +212,7 @@ export default async function CartPage() {
   );
 }
 
-function EmptyCart() {
+async function EmptyCart() {
   return (
     <div className="mx-auto max-w-[1500px] px-4 py-4">
       <div className="flex flex-col items-center gap-6 bg-white px-6 py-10 sm:flex-row sm:items-start">
@@ -249,7 +252,7 @@ function EmptyCart() {
       </div>
 
       <div className="mt-4">
-        <Rail title="Best Sellers" products={bestSellers(14)} />
+        <Rail title="Best Sellers" products={await bestSellers(14)} />
       </div>
     </div>
   );
