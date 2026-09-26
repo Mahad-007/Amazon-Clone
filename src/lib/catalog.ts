@@ -216,7 +216,10 @@ export const topRated = cached("topRated", async (limit = 20): Promise<Product[]
   return rows.map(toProduct);
 });
 
-/** Products under a price ceiling (cents), most popular first. */
+/**
+ * Popular products under a price ceiling (cents), interleaved across
+ * departments. Ranked purely by popularity the shelf is all paperbacks.
+ */
 export const under = cached("under", async (maxCents: number, limit = 12): Promise<Product[]> => {
   const rows = unwrap(
     await publicDb()
@@ -224,11 +227,24 @@ export const under = cached("under", async (maxCents: number, limit = 12): Promi
       .select("*")
       .lt("price_cents", maxCents)
       .order("review_count", { ascending: false })
-      .limit(limit),
+      .limit(200),
     "under",
   );
-  return rows.map(toProduct);
+  return roundRobin(rows.map(toProduct), limit);
 });
+
+/** Takes the best of each department in turn, preserving order within each. */
+function roundRobin(products: Product[], limit: number): Product[] {
+  const lanes = new Map<CategorySlug, Product[]>();
+  for (const p of products) lanes.set(p.category, [...(lanes.get(p.category) ?? []), p]);
+  const out: Product[] = [];
+  for (let round = 0; out.length < limit; round++) {
+    const picks = [...lanes.values()].map((lane) => lane[round]).filter(Boolean);
+    if (picks.length === 0) break;
+    out.push(...picks.slice(0, limit - out.length));
+  }
+  return out;
+}
 
 /** Discounted products, round-robin across departments (see SQL `deals`). */
 export const deals = cached("deals", async (limit = 40): Promise<Product[]> => {
